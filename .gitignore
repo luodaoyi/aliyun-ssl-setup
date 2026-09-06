@@ -32,6 +32,7 @@ _wbind.exe
 /build_status.txt
 build/*.png
 !build/appicon.png
+!build/appicon.png
 
 # Go
 *.test
