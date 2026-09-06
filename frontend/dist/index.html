@@ -349,6 +349,15 @@
         <button class="btn btn-green" id="deployBtn" onclick="startDeploy()">开始部署</button>
         <span class="muted" id="deployPreview"></span>
       </div>
+      <div class="progbox" id="deployProg" style="display:none;margin-top:14px">
+        <div class="prog-head">
+          <span class="t" id="deployProgTitle">部署证书</span>
+          <div class="spacer" style="flex:1"></div>
+          <span class="pct" id="deployProgPct">0%</span>
+        </div>
+        <div class="prog-bar"><div class="prog-fill" id="deployProgFill" style="width:0%"></div></div>
+        <div class="prog-detail" id="deployProgDetail">等待开始…</div>
+      </div>
     </div>
   </div>
 
@@ -486,11 +495,19 @@
         toast("❌ 申请失败：" + r.error, 6000);
       }
     });
+    window.runtime.EventsOn("deploy:progress", (p) => deployOnProgress(p));
     window.runtime.EventsOn("deploy:done", (r) => {
       document.getElementById("deployBtn").disabled = false;
       document.getElementById("deployBtn").textContent = "开始部署";
-      if (r.ok) toast("✅ 部署完成：" + r.done + " 项");
-      else toast("⚠ 部署完成但有失败：" + (r.errors || []).join(" ｜ "), 6000);
+      if (r.ok) {
+        deployProgFinish(true, "✅ 部署完成：" + r.done + " 项，正在自动重新检测…");
+        toast("✅ 部署完成：" + r.done + " 项");
+        setTimeout(() => document.getElementById("deployProg").style.display = "none", 6000);
+      } else {
+        const msg = "⚠ 部署完成但有失败：" + (r.errors || []).join(" ｜ ");
+        deployProgFinish(false, msg);
+        toast(msg, 6000);
+      }
     });
 
     const cfg = await api().GetConfig();
@@ -863,6 +880,27 @@
     refreshDeployPreview();
   }
 
+  // ---------- 部署进度 ----------
+  function deployOnProgress(p) {
+    if (!p) return;
+    const box = document.getElementById("deployProg");
+    box.style.display = "block";
+    const fill = document.getElementById("deployProgFill");
+    fill.className = "prog-fill" + (p.level === "ok" ? " ok" : p.level === "err" ? " err" : "");
+    fill.style.width = (p.percent || 0) + "%";
+    document.getElementById("deployProgPct").textContent = (p.percent || 0) + "%";
+    document.getElementById("deployProgTitle").textContent = p.title || "部署证书";
+    document.getElementById("deployProgDetail").textContent = p.detail || "";
+  }
+
+  function deployProgFinish(ok, msg) {
+    const fill = document.getElementById("deployProgFill");
+    fill.className = "prog-fill " + (ok ? "ok" : "err");
+    fill.style.width = "100%";
+    document.getElementById("deployProgPct").textContent = ok ? "100%" : "失败";
+    document.getElementById("deployProgDetail").textContent = msg;
+  }
+
   async function startDeploy() {
     const key = document.getElementById("depCert").value;
     if (!key) { toast("请先选择证书"); return; }
@@ -888,11 +926,14 @@
 
     const btn = document.getElementById("deployBtn");
     try {
+      deployOnProgress({ percent: 5, title: "部署证书", detail: "提交部署任务…", level: "info" });
       await api().StartDeploy(req);
       btn.disabled = true;
       btn.innerHTML = '<span class="spin"></span>部署中…';
-      switchTab(document.querySelector('.tab[data-v="logs"]'));
-    } catch (e) { toast("❌ " + e, 5000); }
+    } catch (e) {
+      document.getElementById("deployProg").style.display = "none";
+      toast("❌ " + e, 5000);
+    }
   }
 
   async function loadLogs() {

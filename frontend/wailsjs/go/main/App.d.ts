@@ -11,6 +11,8 @@ export function GetApplyProgress():Promise<aliyun.Progress>;
 
 export function GetConfig():Promise<main.AppConfig>;
 
+export function GetDeployProgress():Promise<aliyun.Progress>;
+
 export function GetLastScan():Promise<store.ScanResult>;
 
 export function GetLogs():Promise<Array<main.TaskLog>>;
