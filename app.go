@@ -61,6 +61,8 @@ type App struct {
 	issued   []store.IssuedCert
 	logs     []TaskLog
 	progress *aliyun.Progress
+
+	applyProgress *aliyun.Progress // 证书申请实时进度
 }
 
 func NewApp() *App {
@@ -232,6 +234,13 @@ func (a *App) GetProgress() *aliyun.Progress {
 	return a.progress
 }
 
+// GetApplyProgress 返回当前证书申请进度（供前端切回页面时补齐状态）
+func (a *App) GetApplyProgress() *aliyun.Progress {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.applyProgress
+}
+
 // StartScan 启动一次扫描（异步），过程中推送 scan:progress，完成后推送 scan:done
 func (a *App) StartScan() (string, error) {
 	if a.cfg.AccessKeyID == "" || a.cfg.AccessKeySecret == "" {
@@ -367,25 +376,45 @@ func (a *App) StartApply(domains []string) (string, error) {
 			a.mu.Unlock()
 		}()
 
-		a.log("info", "提交申请：%s", strings.Join(clean, ", "))
-		a.log("info", "ACME 目录：%s", cfg.ACMEDirURL)
+	a.log("info", "提交申请：%s", strings.Join(clean, ", "))
+	a.log("info", "ACME 目录：%s", cfg.ACMEDirURL)
 
-		res, err := acme.Obtain(acme.Options{
-			Email:    cfg.ACMEEmail,
-			CADirURL: cfg.ACMEDirURL,
-			EABKid:   cfg.EABKid,
-			EABHmac:  cfg.EABHmac,
-			Domains:  clean,
-			AKID:     cfg.AccessKeyID,
-			AKSecret: cfg.AccessKeySecret,
-			KeyType:  cfg.KeyType,
-		}, certDir)
+	// 实时进度：状态落 a.applyProgress + 事件推送到前端
+	setProgress := func(p aliyun.Progress) {
+		a.mu.Lock()
+		a.applyProgress = &p
+		a.mu.Unlock()
+		wruntime.EventsEmit(a.ctx, "apply:progress", p)
+	}
+	setProgress(aliyun.Progress{Stage: "init", Title: "申请证书", Detail: "提交申请：" + strings.Join(clean, ", "), Level: "info"})
 
-		if err != nil {
-			a.log("err", "申请失败：%v", err)
-			wruntime.EventsEmit(a.ctx, "apply:done", map[string]any{"ok": false, "error": err.Error()})
-			return
-		}
+	res, err := acme.Obtain(acme.Options{
+		Email:    cfg.ACMEEmail,
+		CADirURL: cfg.ACMEDirURL,
+		EABKid:   cfg.EABKid,
+		EABHmac:  cfg.EABHmac,
+		Domains:  clean,
+		AKID:     cfg.AccessKeyID,
+		AKSecret: cfg.AccessKeySecret,
+		KeyType:  cfg.KeyType,
+		OnProgress: func(stage, detail, level string, pct int) {
+			if level == "" {
+				level = "info"
+			}
+			setProgress(aliyun.Progress{
+				Stage: stage, Title: "申请证书", Detail: detail,
+				Percent: pct, Level: level,
+			})
+			a.log(level, "%s", detail)
+		},
+	}, certDir)
+
+	if err != nil {
+		a.log("err", "申请失败：%v", err)
+		setProgress(aliyun.Progress{Stage: "done", Title: "申请证书", Detail: "申请失败：" + err.Error(), Level: "err", Percent: 100})
+		wruntime.EventsEmit(a.ctx, "apply:done", map[string]any{"ok": false, "error": err.Error()})
+		return
+	}
 
 		a.log("ok", "签发成功，有效期至 %s（%d 天，签发者 %s）", res.NotAfter, res.Days, res.Issuer)
 		a.log("info", "证书已保存：%s", res.CertPath)

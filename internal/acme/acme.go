@@ -48,6 +48,9 @@ type Options struct {
 	AKID     string   // 阿里云 AccessKey ID（DNS-01 用）
 	AKSecret string
 	KeyType  string // rsa2048(默认) / rsa4096 / ec256 / ec384
+
+	// OnProgress 实时进度回调：stage 阶段标识 / detail 动作描述 / level info|ok|warn|err / percent 0-100
+	OnProgress func(stage, detail, level string, percent int)
 }
 
 // Result 申请结果
@@ -80,6 +83,13 @@ func Obtain(opts Options, outDir string) (*Result, error) {
 		opts.CADirURL = ZeroSSLDirURL
 	}
 
+	emit := func(stage, detail, level string, pct int) {
+		if opts.OnProgress != nil {
+			opts.OnProgress(stage, detail, level, pct)
+		}
+	}
+	emit("init", "准备 ACME 客户端…", "info", 5)
+
 	if err := os.MkdirAll(outDir, 0o700); err != nil {
 		return nil, fmt.Errorf("创建证书目录失败: %w", err)
 	}
@@ -103,6 +113,18 @@ func Obtain(opts Options, outDir string) (*Result, error) {
 	provider, err := NewAliDNSProvider(opts.AKID, opts.AKSecret)
 	if err != nil {
 		return nil, err
+	}
+	// 挂接 DNS-01 关键节点进度：写入 TXT / 验证后清理
+	if p, ok := provider.(*alidnsProvider); ok {
+		p.onPresent = func(fqdn string) {
+			emit("dns", "TXT 已写入 "+fqdn+"，等待 DNS 生效（最长 2 分钟）…", "info", 50)
+		}
+		p.onPresenting = func(fqdn string) {
+			emit("dns", "正在写入验证记录 "+fqdn+" …", "info", 40)
+		}
+		p.onCleanup = func(fqdn string) {
+			emit("verify", fqdn+" 验证完成，清理 TXT 记录…", "info", 85)
+		}
 	}
 	if err := client.Challenge.SetDNS01Provider(provider); err != nil {
 		return nil, fmt.Errorf("设置 DNS-01 挑战失败: %w", err)
@@ -128,8 +150,10 @@ func Obtain(opts Options, outDir string) (*Result, error) {
 		}
 		user.Registration = reg
 	}
+	emit("account", "ACME 账号就绪，开始构造验证请求…", "info", 25)
 
 	domains := normalizeDomains(opts.Domains)
+	emit("challenge", "向 CA 提交域名验证（"+strings.Join(domains, ", ")+"）…", "info", 35)
 
 	res, err := client.Certificate.Obtain(certificate.ObtainRequest{
 		Domains: domains,
@@ -168,6 +192,7 @@ func Obtain(opts Options, outDir string) (*Result, error) {
 			out.Issuer = c.Issuer.CommonName
 		}
 	}
+	emit("done", fmt.Sprintf("签发成功：%s，有效期至 %s", out.Primary, out.NotAfter), "ok", 100)
 	return out, nil
 }
 

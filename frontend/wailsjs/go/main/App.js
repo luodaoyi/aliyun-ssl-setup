@@ -6,6 +6,10 @@ export function ClearLogs() {
   return window['go']['main']['App']['ClearLogs']();
 }
 
+export function GetApplyProgress() {
+  return window['go']['main']['App']['GetApplyProgress']();
+}
+
 export function GetConfig() {
   return window['go']['main']['App']['GetConfig']();
 }
