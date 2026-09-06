@@ -82,6 +82,7 @@
     transition: width .25s ease;
   }
   .prog-fill.ok { background: #188038; }
+  .prog-fill.err { background: #d93025; }
   .prog-detail {
     margin-top: 8px; color: #515862; font-size: 12px;
     font-family: Consolas, monospace; white-space: pre-wrap; word-break: break-all;
@@ -287,6 +288,15 @@
         <button class="btn btn-blue" id="applyBtn" onclick="startApply()">开始申请</button>
         <span class="muted" id="applyHint"></span>
       </div>
+      <div class="progbox" id="applyProg" style="display:none;margin-top:14px">
+        <div class="prog-head">
+          <span class="t" id="applyProgTitle">准备</span>
+          <span class="spacer"></span>
+          <span class="pct" id="applyProgPct">0%</span>
+        </div>
+        <div class="prog-bar"><div class="prog-fill" id="applyProgFill" style="width:0%"></div></div>
+        <div class="prog-detail" id="applyProgDetail">等待开始…</div>
+      </div>
     </div>
 
     <div class="panel">
@@ -462,11 +472,18 @@
       toast("检测完成：" + (res.certs || []).length + " 条");
       setTimeout(hideProgress, 2500);
     });
+    window.runtime.EventsOn("apply:progress", (p) => applyOnProgress(p));
     window.runtime.EventsOn("apply:done", (r) => {
       document.getElementById("applyBtn").disabled = false;
       document.getElementById("applyBtn").textContent = "开始申请";
-      if (r.ok) { toast("✅ 证书签发成功"); loadIssued(); }
-      else toast("❌ 申请失败：" + r.error, 6000);
+      if (r.ok) {
+        applyProgFinish(true, "✅ 签发成功");
+        toast("✅ 证书签发成功"); loadIssued();
+        setTimeout(() => document.getElementById("applyProg").style.display = "none", 4000);
+      } else {
+        applyProgFinish(false, "❌ 申请失败：" + r.error);
+        toast("❌ 申请失败：" + r.error, 6000);
+      }
     });
     window.runtime.EventsOn("deploy:done", (r) => {
       document.getElementById("deployBtn").disabled = false;
@@ -670,6 +687,27 @@
   }
 
   // ---------- 申请 ----------
+  // ---------- 申请进度 ----------
+  function applyOnProgress(p) {
+    if (!p) return;
+    const box = document.getElementById("applyProg");
+    box.style.display = "block";
+    const fill = document.getElementById("applyProgFill");
+    fill.className = "prog-fill" + (p.level === "ok" ? " ok" : p.level === "err" ? " err" : "");
+    fill.style.width = (p.percent || 0) + "%";
+    document.getElementById("applyProgPct").textContent = (p.percent || 0) + "%";
+    document.getElementById("applyProgTitle").textContent = p.title || "申请证书";
+    document.getElementById("applyProgDetail").textContent = p.detail || "";
+  }
+
+  function applyProgFinish(ok, msg) {
+    const fill = document.getElementById("applyProgFill");
+    fill.className = "prog-fill " + (ok ? "ok" : "err");
+    fill.style.width = "100%";
+    document.getElementById("applyProgPct").textContent = ok ? "100%" : "失败";
+    document.getElementById("applyProgDetail").textContent = msg;
+  }
+
   async function startApply() {
     const raw = document.getElementById("applyDomains").value;
     const domains = raw.split(/[\s,;]+/).map(s => s.trim()).filter(Boolean);
@@ -679,7 +717,7 @@
       await api().StartApply(domains);
       btn.disabled = true;
       btn.innerHTML = '<span class="spin"></span>申请中…';
-      switchTab(document.querySelector('.tab[data-v="logs"]'));
+      applyOnProgress({ stage: "init", title: "申请证书", detail: "任务已提交，正在准备…", level: "info", percent: 2 });
     } catch (e) { toast("❌ " + e, 5000); }
   }
 
