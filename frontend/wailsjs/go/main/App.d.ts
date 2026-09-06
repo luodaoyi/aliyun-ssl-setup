@@ -9,6 +9,8 @@ export function ClearLogs():Promise<void>;
 
 export function GetApplyProgress():Promise<aliyun.Progress>;
 
+export function GetAutoStatus():Promise<Record<string, any>>;
+
 export function GetConfig():Promise<main.AppConfig>;
 
 export function GetDeployProgress():Promise<aliyun.Progress>;
@@ -28,6 +30,8 @@ export function IsScanning():Promise<boolean>;
 export function ListIssued():Promise<Array<store.IssuedCert>>;
 
 export function ListSLBListeners(arg1:string):Promise<Array<deploy.ListenerInfo>>;
+
+export function RunAutoRenewNow():Promise<main.AutoRenewReport>;
 
 export function SaveConfig(arg1:main.AppConfig):Promise<void>;
 

@@ -10,6 +10,10 @@ export function GetApplyProgress() {
   return window['go']['main']['App']['GetApplyProgress']();
 }
 
+export function GetAutoStatus() {
+  return window['go']['main']['App']['GetAutoStatus']();
+}
+
 export function GetConfig() {
   return window['go']['main']['App']['GetConfig']();
 }
@@ -48,6 +52,10 @@ export function ListIssued() {
 
 export function ListSLBListeners(arg1) {
   return window['go']['main']['App']['ListSLBListeners'](arg1);
+}
+
+export function RunAutoRenewNow() {
+  return window['go']['main']['App']['RunAutoRenewNow']();
 }
 
 export function SaveConfig(arg1) {
