@@ -115,6 +115,7 @@
     padding: 4px 12px; cursor: pointer; color: #515862; font-size: 12px;
   }
   .chip.on { background: #1e4fbd; color: #fff; border-color: #1e4fbd; }
+  .ok-chip { color: #188038; font-size: 12px; font-weight: 600; }
   .toolbar input[type=text] {
     border: 1px solid #d5dbe4; border-radius: 6px; padding: 6px 10px;
     width: 220px; font-size: 12px; outline: none;
@@ -708,6 +709,35 @@
     document.getElementById("applyProgDetail").textContent = msg;
   }
 
+  // ---------- 上传到阿里云证书管家 ----------
+  async function uploadCAS(key) {
+    try {
+      const r = await api().UploadCertToAliyun(key);
+      if ((r || "").startsWith("already:")) toast("该证书已在证书管家中（ID " + r.slice(8) + "）");
+      else toast("✅ 已上传到阿里云证书管家，ID: " + r);
+      loadIssued();
+    } catch (e) { toast("❌ 上传失败：" + e, 6000); }
+  }
+
+  async function uploadAllCAS() {
+    const hint = document.getElementById("casSyncHint");
+    let ok = 0, skip = 0, fail = 0;
+    const fails = [];
+    for (const c of issued) {
+      if (c.cert_id) { skip++; continue; }
+      if (hint) hint.textContent = "上传中：" + c.key + " …";
+      try {
+        const r = await api().UploadCertToAliyun(c.key);
+        if ((r || "").startsWith("already:")) { skip++; c.cert_id = r.slice(8); }
+        else { ok++; c.cert_id = r || "?"; }
+      } catch (e) { fail++; fails.push(c.key + "：" + e); }
+    }
+    if (hint) hint.textContent = "";
+    if (fail) toast("⚠ 同步完成：上传 " + ok + "，已存在 " + skip + "，失败 " + fail + "（" + fails[0] + "）", 8000);
+    else toast("✅ 同步完成：上传 " + ok + "，已存在 " + skip);
+    loadIssued();
+  }
+
   async function startApply() {
     const raw = document.getElementById("applyDomains").value;
     const domains = raw.split(/[\s,;]+/).map(s => s.trim()).filter(Boolean);
@@ -727,13 +757,20 @@
     if (!issued.length) {
       box.innerHTML = '<div class="muted" style="padding:14px 0">还没有签发过证书。</div>';
     } else {
-      box.innerHTML = '<table><thead><tr><th>主域名</th><th>覆盖域名</th><th>到期日</th><th>剩余</th><th>签发者</th><th>路径</th></tr></thead><tbody>' +
+      const pending = issued.filter(c => !c.cert_id).length;
+      box.innerHTML = '<div class="toolbar" style="margin-bottom:10px">' +
+        `<button class="btn" onclick="uploadAllCAS()">⬆ 同步全部到阿里云证书管家</button>` +
+        `<span class="muted" id="casSyncHint">${pending ? pending + " 张未同步" : "全部已同步 ✓"}</span></div>` +
+        '<table><thead><tr><th>主域名</th><th>覆盖域名</th><th>到期日</th><th>剩余</th><th>签发者</th><th>证书管家</th><th>路径</th></tr></thead><tbody>' +
         issued.map(c => `<tr>
           <td><div class="name">${esc(c.key)}</div></td>
           <td class="muted">${esc((c.domains || []).join(" · "))}</td>
           <td>${esc(c.not_after)}</td>
           <td class="${daysClass(c.days)}">${c.days} 天</td>
           <td>${esc(c.issuer || "—")}</td>
+          <td>${c.cert_id
+            ? '<span class="ok-chip">✅ ' + esc(c.cert_id) + '</span>'
+            : `<button class="btn" style="padding:3px 10px" onclick="uploadCAS('${esc(c.key)}')">上传</button>`}</td>
           <td class="muted" style="font-size:11px">${esc(c.cert_path)}</td>
         </tr>`).join("") + '</tbody></table>';
     }
