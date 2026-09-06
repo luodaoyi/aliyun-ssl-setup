@@ -1,0 +1,892 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SSL 证书面板</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+    background: #f1f3f6; color: #1f2329; font-size: 13px;
+    height: 100vh; display: flex; flex-direction: column; overflow: hidden;
+  }
+  header {
+    background: #1e4fbd; color: #fff; padding: 9px 18px;
+    display: flex; align-items: center; gap: 14px; flex-shrink: 0;
+  }
+  header h1 { font-size: 16px; font-weight: 600; }
+  header .spacer { flex: 1; }
+  header .meta { font-size: 12px; opacity: .85; }
+  .btn {
+    border: none; border-radius: 6px; padding: 7px 16px; cursor: pointer;
+    font-size: 13px; font-weight: 500; transition: opacity .15s;
+  }
+  .btn:hover { opacity: .88; }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .btn-primary { background: #fff; color: #1e4fbd; }
+  .btn-ghost { background: transparent; color: #fff; border: 1px solid rgba(255,255,255,.5); }
+  .btn-blue { background: #1e4fbd; color: #fff; }
+  .btn-green { background: #188038; color: #fff; }
+  .btn-gray { background: #eef1f5; color: #515862; }
+  .btn-sm { padding: 5px 12px; font-size: 12px; }
+
+  .tabs {
+    display: flex; gap: 2px; background: #fff; padding: 0 14px;
+    border-bottom: 1px solid #e6e9ef; flex-shrink: 0;
+  }
+  .tab {
+    padding: 9px 18px; cursor: pointer; color: #515862; font-weight: 500;
+    border-bottom: 2px solid transparent; user-select: none;
+  }
+  .tab:hover { color: #1e4fbd; }
+  .tab.on { color: #1e4fbd; border-bottom-color: #1e4fbd; }
+
+  main { flex: 1; overflow: auto; padding: 14px 18px; }
+  .view { display: none; }
+  .view.on { display: block; }
+
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 14px; }
+  .card {
+    background: #fff; border-radius: 10px; padding: 14px 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.08);
+  }
+  .card .num { font-size: 26px; font-weight: 700; line-height: 1.2; }
+  .card .lbl { color: #7a8494; margin-top: 2px; }
+  .card.red .num { color: #d93026; }
+  .card.orange .num { color: #e8710a; }
+  .card.green .num { color: #188038; }
+  .card.blue .num { color: #1a73e8; }
+
+  .panel {
+    background: #fff; border-radius: 10px; padding: 16px 18px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.08); margin-bottom: 14px;
+  }
+  .panel h2 { font-size: 14px; margin-bottom: 4px; }
+  .panel .desc { color: #7a8494; font-size: 12px; margin-bottom: 12px; line-height: 1.6; }
+
+  /* 检测进度 */
+  .progbox {
+    background: #fff; border-radius: 10px; padding: 14px 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.08); margin-bottom: 14px; display: none;
+  }
+  .prog-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+  .prog-head .t { font-size: 13px; font-weight: 600; }
+  .prog-head .spacer { flex: 1; }
+  .prog-head .pct { font-size: 18px; font-weight: 700; color: #1e4fbd; }
+  .prog-bar {
+    height: 7px; background: #eef1f5; border-radius: 999px; overflow: hidden;
+  }
+  .prog-fill {
+    height: 100%; width: 0%; border-radius: 999px; background: #1e4fbd;
+    transition: width .25s ease;
+  }
+  .prog-fill.ok { background: #188038; }
+  .prog-detail {
+    margin-top: 8px; color: #515862; font-size: 12px;
+    font-family: Consolas, monospace; white-space: pre-wrap; word-break: break-all;
+  }
+  .prog-stages { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+  .pstage {
+    border: 1px solid #e2e6ec; border-radius: 8px; padding: 6px 11px;
+    font-size: 12px; color: #7a8494; background: #fbfcfe; min-width: 118px;
+  }
+  .pstage .nm { display: flex; align-items: center; gap: 6px; font-weight: 500; }
+  .pstage .dot {
+    width: 7px; height: 7px; border-radius: 50%; background: #c9d0da; flex-shrink: 0;
+  }
+  .pstage .ct { color: #9aa3af; font-size: 11px; margin-top: 2px; padding-left: 13px; }
+  .pstage.run { border-color: #9db8e8; background: #f2f7ff; color: #1e4fbd; }
+  .pstage.run .dot { background: #1e4fbd; animation: pulse 1s ease-in-out infinite; }
+  .pstage.ok { border-color: #a5d6b5; background: #f2fbf5; color: #188038; }
+  .pstage.ok .dot { background: #188038; }
+  .pstage.warn { border-color: #ecc96a; background: #fffaf0; color: #a06800; }
+  .pstage.warn .dot { background: #e8b23a; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+
+  .toolbar {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    background: #fff; border-radius: 10px 10px 0 0; padding: 10px 14px;
+    border-bottom: 1px solid #e6e9ef;
+  }
+  .chip {
+    border: 1px solid #d5dbe4; background: #fff; border-radius: 999px;
+    padding: 4px 12px; cursor: pointer; color: #515862; font-size: 12px;
+  }
+  .chip.on { background: #1e4fbd; color: #fff; border-color: #1e4fbd; }
+  .toolbar input[type=text] {
+    border: 1px solid #d5dbe4; border-radius: 6px; padding: 6px 10px;
+    width: 220px; font-size: 12px; outline: none;
+  }
+  .toolbar input[type=text]:focus { border-color: #1e4fbd; }
+  .toolbar .spacer { flex: 1; }
+  .errbox {
+    background: #fff; padding: 8px 14px; color: #b3261e; font-size: 12px;
+    border-bottom: 1px solid #e6e9ef; display: none;
+  }
+  .tablewrap { background: #fff; border-radius: 0 0 10px 10px; overflow: auto; max-height: calc(100vh - 300px); }
+  table { width: 100%; border-collapse: collapse; }
+  th {
+    text-align: left; padding: 8px 12px; background: #f7f9fc; color: #515862;
+    font-weight: 600; position: sticky; top: 0; border-bottom: 1px solid #e6e9ef;
+    white-space: nowrap; cursor: pointer; user-select: none;
+  }
+  td { padding: 7px 12px; border-bottom: 1px solid #eef1f5; vertical-align: top; }
+  tr:hover td { background: #f7faff; }
+  .src-tag {
+    display: inline-block; border-radius: 4px; padding: 1px 8px;
+    font-size: 11px; font-weight: 600; color: #fff;
+  }
+  .src-cas { background: #7b3ff2; } .src-slb { background: #e8710a; }
+  .src-oss { background: #1a73e8; } .src-cdn { background: #00a3a3; }
+  .src-dns { background: #7a8494; }
+  .days-red { color: #d93026; font-weight: 700; }
+  .days-orange { color: #e8710a; font-weight: 600; }
+  .days-green { color: #188038; }
+  .muted { color: #9aa3af; }
+  .name { font-weight: 600; word-break: break-all; max-width: 360px; }
+  .sub { color: #9aa3af; font-size: 11px; margin-top: 1px; }
+
+  #empty { text-align: center; color: #8a94a6; padding: 50px 0; }
+  #empty .big { font-size: 36px; margin-bottom: 10px; }
+
+  textarea.domains {
+    width: 100%; min-height: 92px; border: 1px solid #d5dbe4; border-radius: 6px;
+    padding: 9px 11px; font-size: 13px; font-family: Consolas, monospace;
+    outline: none; resize: vertical; line-height: 1.6;
+  }
+  textarea.domains:focus { border-color: #1e4fbd; }
+  select, input.field {
+    border: 1px solid #d5dbe4; border-radius: 6px; padding: 7px 10px;
+    font-size: 13px; outline: none; background: #fff;
+  }
+  select:focus, input.field:focus { border-color: #1e4fbd; }
+  .formrow { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+  .formrow label { min-width: 92px; color: #515862; }
+  .checks { display: flex; gap: 16px; flex-wrap: wrap; }
+  .checks label { display: flex; align-items: center; gap: 5px; cursor: pointer; min-width: 0; }
+
+  .logbox {
+    background: #1b1f27; color: #d6dae0; border-radius: 10px; padding: 12px 14px;
+    font-family: Consolas, "Microsoft YaHei", monospace; font-size: 12px;
+    line-height: 1.75; height: calc(100vh - 190px); overflow: auto; white-space: pre-wrap;
+  }
+  .logbox .t { color: #7a8494; }
+  .logbox .l-info { color: #9db8e8; }
+  .logbox .l-ok { color: #6dd48b; }
+  .logbox .l-warn { color: #e8b23a; }
+  .logbox .l-err { color: #f2777a; }
+
+  /* 设置弹层 */
+  #settings {
+    position: fixed; inset: 0; background: rgba(15,20,30,.45);
+    display: none; align-items: center; justify-content: center; z-index: 50;
+  }
+  #settings .panel {
+    background: #fff; border-radius: 12px; width: 520px; max-height: 88vh; overflow: auto;
+    padding: 22px 24px; box-shadow: 0 12px 40px rgba(0,0,0,.25); margin: 0;
+  }
+  #settings h2 { font-size: 15px; margin-bottom: 6px; }
+  #settings h3 {
+    font-size: 13px; margin: 18px 0 2px; padding-top: 12px;
+    border-top: 1px solid #eef1f5; color: #1e4fbd;
+  }
+  #settings h3:first-of-type { border-top: none; padding-top: 0; }
+  #settings label { display: block; color: #515862; margin: 10px 0 4px; font-size: 12px; }
+  #settings input {
+    width: 100%; border: 1px solid #d5dbe4; border-radius: 6px;
+    padding: 8px 10px; font-size: 12px; outline: none; font-family: Consolas, monospace;
+  }
+  #settings input:focus { border-color: #1e4fbd; }
+  #settings .row { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; }
+  #settings .tip { font-size: 11px; color: #9aa3af; margin-top: 4px; line-height: 1.6; }
+
+  #toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    background: #2b2f36; color: #fff; border-radius: 8px; padding: 9px 20px;
+    display: none; z-index: 99; font-size: 13px; max-width: 70vw;
+  }
+  .spin {
+    display: inline-block; width: 13px; height: 13px; border: 2px solid rgba(255,255,255,.4);
+    border-top-color: #fff; border-radius: 50%; animation: r 0.8s linear infinite;
+    vertical-align: -2px; margin-right: 6px;
+  }
+  @keyframes r { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<header>
+  <h1>SSL 证书面板</h1>
+  <span class="meta" id="lastscan"></span>
+  <div class="spacer"></div>
+  <button class="btn btn-ghost" onclick="openSettings()">设置</button>
+  <button class="btn btn-primary" id="scanBtn" onclick="startScan()">立即检测</button>
+</header>
+
+<div class="tabs">
+  <div class="tab on" data-v="inventory" onclick="switchTab(this)">检测库存</div>
+  <div class="tab" data-v="apply" onclick="switchTab(this)">申请证书</div>
+  <div class="tab" data-v="deploy" onclick="switchTab(this)">刷新部署</div>
+  <div class="tab" data-v="logs" onclick="switchTab(this)">任务日志</div>
+</div>
+
+<main>
+  <!-- ============ 检测库存 ============ -->
+  <div class="view on" id="v-inventory">
+    <div class="progbox" id="progbox">
+      <div class="prog-head">
+        <span class="t" id="progTitle">准备</span>
+        <span class="spacer"></span>
+        <span class="pct" id="progPct">0%</span>
+      </div>
+      <div class="prog-bar"><div class="prog-fill" id="progFill"></div></div>
+      <div class="prog-detail" id="progDetail">正在启动…</div>
+      <div class="prog-stages" id="progStages"></div>
+    </div>
+    <div class="cards" id="cards"></div>
+
+    <div class="toolbar">
+      <span class="chip on" data-src="all" onclick="setFilter(this)">全部</span>
+      <span class="chip" data-src="cas" onclick="setFilter(this)">CAS 证书</span>
+      <span class="chip" data-src="slb" onclick="setFilter(this)">SLB</span>
+      <span class="chip" data-src="oss" onclick="setFilter(this)">OSS 域名</span>
+      <span class="chip" data-src="cdn" onclick="setFilter(this)">CDN</span>
+      <span class="chip" data-src="dns" onclick="setFilter(this)">DNS 域名</span>
+      <div class="spacer"></div>
+      <input type="text" id="q" placeholder="搜索域名 / 证书名…" oninput="render()">
+    </div>
+    <div class="errbox" id="errbox"></div>
+    <div class="tablewrap">
+      <div id="empty"><div class="big">🔒</div>暂无数据，点击右上角「立即检测」开始</div>
+      <table id="tbl" style="display:none">
+        <thead>
+          <tr>
+            <th onclick="sortBy('name')">域名 / 证书名</th>
+            <th onclick="sortBy('source')">来源</th>
+            <th onclick="sortBy('days')">到期日</th>
+            <th onclick="sortBy('days')">剩余天数</th>
+            <th onclick="sortBy('issuer')">签发者</th>
+            <th onclick="sortBy('region')">地域</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ============ 申请证书 ============ -->
+  <div class="view" id="v-apply">
+    <div class="panel">
+      <h2>申请新证书</h2>
+      <div class="desc">
+        通过 ACME + DNS-01 自动验证签发。通配符写 <code>*.example.com</code>，多个域名用逗号或换行分隔（第一项为主域名）。
+        验证过程会自动在云解析添加 <code>_acme-challenge</code> TXT 记录，完成后自动清除。
+      </div>
+      <textarea class="domains" id="applyDomains" spellcheck="false" placeholder="ssl.example.com&#10;或 *.example.cn, example.cn"></textarea>
+      <div class="formrow" style="margin-top:12px">
+        <button class="btn btn-blue" id="applyBtn" onclick="startApply()">开始申请</button>
+        <span class="muted" id="applyHint"></span>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>已签发的证书</h2>
+      <div class="desc">证书与私钥保存在 exe 同目录 <code>data/certs/</code>，可直接用于部署。</div>
+      <div id="issuedBox"></div>
+    </div>
+  </div>
+
+  <!-- ============ 刷新部署 ============ -->
+  <div class="view" id="v-deploy">
+    <div class="panel">
+      <h2>部署证书到阿里云</h2>
+      <div class="desc">
+        按证书覆盖的域名自动匹配 OSS / CDN 目标并更新证书；SLB 需指定实例与 HTTPS 监听端口。
+        部署完成后会自动重新检测一次以刷新到期时间。
+      </div>
+
+      <div class="formrow">
+        <label>选择证书</label>
+        <select id="depCert" onchange="refreshDeployPreview()"></select>
+      </div>
+
+      <div class="formrow">
+        <label>部署目标</label>
+        <div class="checks">
+          <label><input type="checkbox" id="depOss" checked onchange="refreshDeployPreview()"> OSS 自定义域名</label>
+          <label><input type="checkbox" id="depCdn" checked onchange="refreshDeployPreview()"> CDN 加速域名</label>
+          <label><input type="checkbox" id="depSlb" onchange="toggleSlb()"> SLB 负载均衡</label>
+        </div>
+      </div>
+
+      <div class="formrow">
+        <label>限定域名</label>
+        <input class="field" id="depDomain" type="text" style="flex:1;max-width:320px"
+               placeholder="留空 = 部署到所有匹配域名" oninput="refreshDeployPreview()">
+      </div>
+
+      <div id="slbBox" style="display:none">
+        <div class="formrow">
+          <label>SLB 监听</label>
+          <select id="depRegion" onchange="loadListeners()" style="min-width:150px"></select>
+          <select id="depListener" style="flex:1;min-width:280px"></select>
+          <button class="btn btn-gray btn-sm" onclick="loadListeners()">刷新列表</button>
+        </div>
+      </div>
+
+      <div class="formrow" style="margin-top:6px">
+        <button class="btn btn-green" id="deployBtn" onclick="startDeploy()">开始部署</button>
+        <span class="muted" id="deployPreview"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 任务日志 ============ -->
+  <div class="view" id="v-logs">
+    <div class="panel" style="margin-bottom:10px">
+      <div class="formrow" style="margin:0">
+        <h2 style="margin:0">任务日志</h2>
+        <div class="spacer" style="flex:1"></div>
+        <button class="btn btn-gray btn-sm" onclick="clearLogs()">清空</button>
+      </div>
+    </div>
+    <div class="logbox" id="logbox"></div>
+  </div>
+</main>
+
+<div id="settings">
+  <div class="panel">
+    <h2>配置</h2>
+
+    <h3>阿里云凭证</h3>
+    <label>AccessKey ID</label>
+    <input id="cfgAk" type="text" spellcheck="false">
+    <label>AccessKey Secret</label>
+    <input id="cfgSk" type="password" spellcheck="false">
+    <label>地域（逗号分隔）</label>
+    <input id="cfgRegions" type="text" placeholder="cn-beijing,cn-hangzhou">
+    <div class="tip">
+      扫描只用只读 API；申请证书需要 DNS 写权限，部署需要 OSS/CDN/SLB 写权限，
+      建议使用带这些权限的专用 AccessKey。配置保存在 exe 同目录 config.json。
+    </div>
+
+    <h3>ACME 申请</h3>
+    <label>账号邮箱</label>
+    <input id="cfgEmail" type="text" placeholder="you@example.com">
+    <label>ACME 目录地址</label>
+    <input id="cfgCa" type="text" placeholder="https://acme.zerossl.com/v2/DV90">
+    <label>ZeroSSL EAB KID</label>
+    <input id="cfgKid" type="text" spellcheck="false">
+    <label>ZeroSSL EAB HMAC Key</label>
+    <input id="cfgHmac" type="password" spellcheck="false">
+    <label>密钥类型</label>
+    <input id="cfgKeyType" type="text" placeholder="rsa2048（可选 ec256 / rsa4096 / ec384）">
+    <div class="tip">
+      ZeroSSL 的 ACME 强制要求 EAB：到 https://app.zerossl.com/developer 点 Generate 获取 KID 与 HMAC Key，
+      <b>只显示一次</b>，务必保存。改用 Let's Encrypt 则留空 EAB，目录地址填
+      https://acme-v02.api.letsencrypt.org/directory
+    </div>
+
+    <h3>邮件告警（可选）</h3>
+    <label>SMTP 服务器</label>
+    <input id="cfgSmtpHost" type="text" placeholder="smtp.gmail.com">
+    <label>端口</label>
+    <input id="cfgSmtpPort" type="text" placeholder="465">
+    <label>账号</label>
+    <input id="cfgSmtpUser" type="text">
+    <label>密码 / 应用专用密码</label>
+    <input id="cfgSmtpPass" type="password">
+    <label>收件人</label>
+    <input id="cfgMailTo" type="text">
+
+    <div class="row">
+      <button class="btn btn-gray" onclick="importAK()">导入本机 aliyun CLI AK</button>
+      <div style="flex:1"></div>
+      <button class="btn btn-gray" onclick="closeSettings()">取消</button>
+      <button class="btn btn-blue" onclick="saveCfg()">保存</button>
+    </div>
+  </div>
+</div>
+<div id="toast"></div>
+
+<script>
+  let allCerts = [], filter = "all", sortKey = "days", sortAsc = true, lastTime = null;
+  let issued = [], listeners = [], scanning = false, stageState = {};
+
+  const api = () => window.go.main.App;
+
+  const STAGES = [
+    ["cas", "CAS 证书管家"],
+    ["slb", "SLB 负载均衡"],
+    ["oss", "OSS 自定义域名"],
+    ["cdn", "CDN 加速域名"],
+    ["dns", "云解析域名"],
+  ];
+
+  function toast(msg, ms) {
+    const t = document.getElementById("toast");
+    t.textContent = msg; t.style.display = "block";
+    clearTimeout(t._h); t._h = setTimeout(() => t.style.display = "none", ms || 2600);
+  }
+
+  function log(msg, level) {
+    const box = document.getElementById("logbox");
+    const d = new Date();
+    const ts = String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0') + ':' + String(d.getSeconds()).padStart(2,'0');
+    const line = document.createElement("div");
+    line.innerHTML = `<span class="t">[${ts}]</span> <span class="l-${level||'info'}">${esc(msg)}</span>`;
+    box.appendChild(line);
+    box.scrollTop = box.scrollHeight;
+  }
+  function clearLogs() {
+    document.getElementById("logbox").innerHTML = "";
+    try { api().ClearLogs(); } catch (e) {}
+  }
+
+  function switchTab(el) {
+    document.querySelectorAll(".tab").forEach(t => t.classList.remove("on"));
+    el.classList.add("on");
+    const v = el.dataset.v;
+    document.querySelectorAll(".view").forEach(x => x.classList.remove("on"));
+    document.getElementById("v-" + v).classList.add("on");
+    if (v === "apply") loadIssued();
+    if (v === "deploy") { loadIssued(); loadListeners(); }
+    if (v === "logs") loadLogs();
+  }
+
+  async function init() {
+    window.runtime.EventsOn("scan:progress", (p) => onProgress(p));
+    window.runtime.EventsOn("task:log", (e) => log(e.msg, e.level));
+    window.runtime.EventsOn("scan:done", (res) => {
+      applyResult(res);
+      toast("检测完成：" + (res.certs || []).length + " 条");
+      setTimeout(hideProgress, 2500);
+    });
+    window.runtime.EventsOn("apply:done", (r) => {
+      document.getElementById("applyBtn").disabled = false;
+      document.getElementById("applyBtn").textContent = "开始申请";
+      if (r.ok) { toast("✅ 证书签发成功"); loadIssued(); }
+      else toast("❌ 申请失败：" + r.error, 6000);
+    });
+    window.runtime.EventsOn("deploy:done", (r) => {
+      document.getElementById("deployBtn").disabled = false;
+      document.getElementById("deployBtn").textContent = "开始部署";
+      if (r.ok) toast("✅ 部署完成：" + r.done + " 项");
+      else toast("⚠ 部署完成但有失败：" + (r.errors || []).join(" ｜ "), 6000);
+    });
+
+    const cfg = await api().GetConfig();
+    fillRegions(cfg);
+    loadLogs();
+    loadIssued();
+
+    const last = await api().GetLastScan();
+    if (last && last.certs && last.certs.length) applyResult(last);
+    else if (!cfg.access_key_id) openSettings();
+    refreshApplyHint(cfg);
+  }
+
+  function refreshApplyHint(cfg) {
+    const h = document.getElementById("applyHint");
+    if (!cfg.acme_email) { h.textContent = "⚠ 请先在「设置」填写 ACME 账号邮箱"; return; }
+    if (!cfg.eab_kid && (cfg.acme_dir_url || "").includes("zerossl")) {
+      h.textContent = "⚠ ZeroSSL 需要 EAB 凭据，请在「设置」填写"; return;
+    }
+    h.textContent = "CA：" + (cfg.acme_dir_url || "https://acme.zerossl.com/v2/DV90");
+  }
+
+  function applyResult(res) {
+    lastTime = res.time || res.Time;
+    allCerts = res.certs || res.Certs || [];
+    const errs = res.errors || [];
+    document.getElementById("errbox").style.display = errs.length ? "block" : "none";
+    document.getElementById("errbox").textContent = "⚠ 检测错误：" + errs.join(" ｜ ");
+    render();
+  }
+
+  // ---------- 检测进度 ----------
+  function resetProgress() {
+    stageState = {};
+    STAGES.forEach(([k]) => stageState[k] = { pct: 0, detail: "等待中", level: "", count: "" });
+    document.getElementById("progbox").style.display = "block";
+    document.getElementById("progFill").className = "prog-fill";
+    document.getElementById("progTitle").textContent = "准备";
+    document.getElementById("progDetail").textContent = "正在启动…";
+    document.getElementById("progPct").textContent = "0%";
+    document.getElementById("progFill").style.width = "0%";
+    renderStages();
+  }
+
+  function hideProgress() {
+    scanning = false;
+    document.getElementById("progbox").style.display = "none";
+    const btn = document.getElementById("scanBtn");
+    btn.disabled = false; btn.textContent = "立即检测";
+  }
+
+  function onProgress(p) {
+    if (!p) return;
+    if (!scanning && p.stage !== "done") { scanning = true; resetProgress(); }
+
+    if (stageState[p.stage] !== undefined) {
+      const total = p.total || 0;
+      const pct = total > 0 ? Math.round(p.done * 100 / total) : (p.level === "ok" ? 100 : 0);
+      stageState[p.stage] = {
+        pct: pct,
+        detail: p.detail || "",
+        level: p.level || "",
+        count: total > 0 ? p.done + "/" + total : "",
+      };
+    }
+
+    // 总体进度 = 五个阶段进度的平均（五个阶段并发执行）
+    let sum = 0;
+    STAGES.forEach(([k]) => sum += (stageState[k] ? stageState[k].pct : 0));
+    const overall = Math.round(sum / STAGES.length);
+    if (p.stage === "done") {
+      document.getElementById("progFill").className = "prog-fill ok";
+      document.getElementById("progPct").textContent = "100%";
+      document.getElementById("progFill").style.width = "100%";
+    } else {
+      document.getElementById("progPct").textContent = overall + "%";
+      document.getElementById("progFill").style.width = overall + "%";
+    }
+    document.getElementById("progTitle").textContent = p.title || p.stage || "";
+    document.getElementById("progDetail").textContent = p.detail || "";
+    renderStages();
+  }
+
+  function renderStages() {
+    document.getElementById("progStages").innerHTML = STAGES.map(([k, name]) => {
+      const s = stageState[k] || { pct: 0, detail: "等待中", level: "", count: "" };
+      let cls = "";
+      if (s.level === "ok") cls = "ok";
+      else if (s.level === "warn") cls = "warn";
+      else if (s.pct > 0 || s.level === "info") cls = "run";
+      const cnt = s.count ? s.count : (s.level === "ok" ? "完成" : "");
+      return `<div class="pstage ${cls}">
+        <div class="nm"><span class="dot"></span>${esc(name)}</div>
+        <div class="ct">${cnt ? esc(cnt) + " · " : ""}${esc(s.detail)}</div>
+      </div>`;
+    }).join("");
+  }
+
+  async function startScan() {
+    const btn = document.getElementById("scanBtn");
+    try {
+      const r = await api().StartScan();
+      if (r === "already") { toast("检测正在进行中…"); return; }
+      scanning = true;
+      resetProgress();
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spin"></span>检测中…';
+    } catch (e) { toast("❌ " + e, 4000); }
+  }
+
+  function setFilter(el) {
+    document.querySelectorAll(".chip").forEach(c => c.classList.remove("on"));
+    el.classList.add("on");
+    filter = el.dataset.src;
+    render();
+  }
+
+  function sortBy(k) {
+    if (sortKey === k) sortAsc = !sortAsc; else { sortKey = k; sortAsc = true; }
+    render();
+  }
+
+  function daysClass(d) {
+    if (d === null || d === undefined) return "muted";
+    if (d <= 15) return "days-red";
+    if (d <= 30) return "days-orange";
+    return "days-green";
+  }
+
+  function esc(s) { return String(s || "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+
+  function render() {
+    // 扫描进行中不要重置按钮，避免搜索/排序时打断状态
+    if (!scanning) {
+      const btn = document.getElementById("scanBtn");
+      btn.disabled = false; btn.textContent = "立即检测";
+    }
+
+    const expired = allCerts.filter(c => c.days != null && c.days < 0).length;
+    const d15 = allCerts.filter(c => c.days != null && c.days >= 0 && c.days <= 15).length;
+    const d30 = allCerts.filter(c => c.days != null && c.days > 15 && c.days <= 30).length;
+    document.getElementById("cards").innerHTML = [
+      card(allCerts.length, "总条目", "blue"),
+      card(expired, "已过期", "red"),
+      card(d15, "15 天内到期", "red"),
+      card(d30, "16–30 天到期", "orange"),
+      card(allCerts.filter(c => c.days == null).length, "无到期信息", "green"),
+    ].join("");
+
+    if (lastTime) {
+      document.getElementById("lastscan").textContent =
+        "上次检测：" + new Date(lastTime).toLocaleString("zh-CN");
+    }
+
+    const q = (document.getElementById("q").value || "").toLowerCase();
+    let rows = allCerts.filter(c =>
+      (filter === "all" || c.source === filter) &&
+      (!q || (c.name + " " + (c.domains || []).join(" ") + " " + (c.issuer || "") + " " + (c.note || "")).toLowerCase().includes(q))
+    );
+
+    rows.sort((a, b) => {
+      let x, y;
+      if (sortKey === "days") {
+        const da = a.days, db = b.days;
+        if (da == null && db == null) return 0;
+        if (da == null) return 1;
+        if (db == null) return -1;
+        x = da; y = db;
+      } else { x = String(a[sortKey] || ""); y = String(b[sortKey] || ""); }
+      return (x < y ? -1 : x > y ? 1 : 0) * (sortAsc ? 1 : -1);
+    });
+
+    document.getElementById("empty").style.display = rows.length ? "none" : "block";
+    document.getElementById("tbl").style.display = rows.length ? "table" : "none";
+
+    document.getElementById("tbody").innerHTML = rows.map(c => {
+      const days = c.days;
+      const dTxt = days == null ? "—" : (days < 0 ? `已过期 ${-days} 天` : `${days} 天`);
+      const domains = (c.domains || []).filter(d => d && d !== c.name);
+      const sub = domains.length ? `<div class="sub">+ ${domains.slice(0, 4).join(" · ")}${domains.length > 4 ? ` 等 ${domains.length} 个` : ""}</div>` : "";
+      const note = c.note ? `<div class="sub">${esc(c.note)}</div>` : "";
+      return `<tr>
+        <td><div class="name">${esc(c.name)}</div>${sub}${note}</td>
+        <td><span class="src-tag src-${c.source}">${c.source.toUpperCase()}</span></td>
+        <td>${esc(c.not_after || "—")}</td>
+        <td class="${daysClass(days)}">${dTxt}</td>
+        <td>${esc(c.issuer || "—")}</td>
+        <td class="muted">${esc(c.region || "—")}</td>
+      </tr>`;
+    }).join("");
+  }
+
+  function card(num, lbl, cls) {
+    return `<div class="card ${cls}"><div class="num">${num}</div><div class="lbl">${lbl}</div></div>`;
+  }
+
+  // ---------- 申请 ----------
+  async function startApply() {
+    const raw = document.getElementById("applyDomains").value;
+    const domains = raw.split(/[\s,;]+/).map(s => s.trim()).filter(Boolean);
+    if (!domains.length) { toast("请先填写域名"); return; }
+    const btn = document.getElementById("applyBtn");
+    try {
+      await api().StartApply(domains);
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spin"></span>申请中…';
+      switchTab(document.querySelector('.tab[data-v="logs"]'));
+    } catch (e) { toast("❌ " + e, 5000); }
+  }
+
+  async function loadIssued() {
+    try { issued = await api().ListIssued() || []; } catch (e) { issued = []; }
+    const box = document.getElementById("issuedBox");
+    if (!issued.length) {
+      box.innerHTML = '<div class="muted" style="padding:14px 0">还没有签发过证书。</div>';
+    } else {
+      box.innerHTML = '<table><thead><tr><th>主域名</th><th>覆盖域名</th><th>到期日</th><th>剩余</th><th>签发者</th><th>路径</th></tr></thead><tbody>' +
+        issued.map(c => `<tr>
+          <td><div class="name">${esc(c.key)}</div></td>
+          <td class="muted">${esc((c.domains || []).join(" · "))}</td>
+          <td>${esc(c.not_after)}</td>
+          <td class="${daysClass(c.days)}">${c.days} 天</td>
+          <td>${esc(c.issuer || "—")}</td>
+          <td class="muted" style="font-size:11px">${esc(c.cert_path)}</td>
+        </tr>`).join("") + '</tbody></table>';
+    }
+
+    const sel = document.getElementById("depCert");
+    const cur = sel.value;
+    sel.innerHTML = issued.length
+      ? issued.map(c => `<option value="${esc(c.key)}">${esc(c.key)}（${esc((c.domains||[]).join(", "))}）</option>`).join("")
+      : '<option value="">— 请先申请证书 —</option>';
+    if (cur && issued.some(c => c.key === cur)) sel.value = cur;
+    refreshDeployPreview();
+  }
+
+  // ---------- 部署 ----------
+  function covers(domains, host) {
+    host = String(host || "").toLowerCase();
+    return (domains || []).some(d => {
+      d = String(d || "").toLowerCase();
+      if (d === host) return true;
+      if (d.startsWith("*.")) {
+        const base = d.slice(2);
+        return host === base || host.endsWith("." + base);
+      }
+      return false;
+    });
+  }
+
+  function selectedTargets() {
+    const t = [];
+    if (document.getElementById("depOss").checked) t.push("oss");
+    if (document.getElementById("depCdn").checked) t.push("cdn");
+    if (document.getElementById("depSlb").checked) t.push("slb");
+    return t;
+  }
+
+  function toggleSlb() {
+    document.getElementById("slbBox").style.display =
+      document.getElementById("depSlb").checked ? "block" : "none";
+    refreshDeployPreview();
+  }
+
+  function refreshDeployPreview() {
+    const key = document.getElementById("depCert").value;
+    const rec = issued.find(c => c.key === key);
+    const targets = selectedTargets();
+    const only = (document.getElementById("depDomain").value || "").trim();
+    if (!rec || !targets.length) {
+      document.getElementById("deployPreview").textContent = "";
+      return;
+    }
+    let n = 0;
+    if (targets.includes("oss") || targets.includes("cdn")) {
+      allCerts.forEach(c => {
+        if (only && c.name !== only) return;
+        if (!covers(rec.domains, c.name)) return;
+        if (targets.includes("oss") && c.source === "oss") n++;
+        if (targets.includes("cdn") && c.source === "cdn") n++;
+      });
+    }
+    if (targets.includes("slb")) n++;
+    document.getElementById("deployPreview").textContent =
+      `预计更新 ${n} 个目标（证书覆盖 ${(rec.domains || []).length} 个域名）`;
+  }
+
+  function fillRegions(cfg) {
+    const sel = document.getElementById("depRegion");
+    sel.innerHTML = (cfg.regions || ["cn-beijing", "cn-hangzhou"])
+      .map(r => `<option value="${esc(r)}">${esc(r)}</option>`).join("");
+  }
+
+  async function loadListeners() {
+    const region = document.getElementById("depRegion").value;
+    if (!region) return;
+    const sel = document.getElementById("depListener");
+    sel.innerHTML = '<option>加载中…</option>';
+    try {
+      listeners = await api().ListSLBListeners(region) || [];
+    } catch (e) {
+      listeners = [];
+      sel.innerHTML = '<option value="">加载失败：' + esc(e) + '</option>';
+      return;
+    }
+    if (!listeners.length) {
+      sel.innerHTML = '<option value="">该地域无 HTTPS 监听</option>';
+      return;
+    }
+    sel.innerHTML = listeners.map((l, i) =>
+      `<option value="${i}">${esc(l.load_balancer_name || l.load_balancer_id)} : ${l.port} — 当前证书 ${esc(l.cert_name || l.cert_id || "无")}</option>`
+    ).join("");
+    refreshDeployPreview();
+  }
+
+  async function startDeploy() {
+    const key = document.getElementById("depCert").value;
+    if (!key) { toast("请先选择证书"); return; }
+    const targets = selectedTargets();
+    if (!targets.length) { toast("请至少选择一个部署目标"); return; }
+
+    const req = {
+      cert_key: key,
+      targets: targets,
+      domain: (document.getElementById("depDomain").value || "").trim(),
+      region: document.getElementById("depRegion").value,
+      lb_id: "",
+      port: 0,
+    };
+    if (targets.includes("slb")) {
+      const idx = document.getElementById("depListener").value;
+      const l = listeners[parseInt(idx, 10)];
+      if (!l) { toast("请选择 SLB 监听"); return; }
+      req.lb_id = l.load_balancer_id;
+      req.port = l.port;
+      req.region = l.region;
+    }
+
+    const btn = document.getElementById("deployBtn");
+    try {
+      await api().StartDeploy(req);
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spin"></span>部署中…';
+      switchTab(document.querySelector('.tab[data-v="logs"]'));
+    } catch (e) { toast("❌ " + e, 5000); }
+  }
+
+  async function loadLogs() {
+    try {
+      const logs = await api().GetLogs() || [];
+      document.getElementById("logbox").innerHTML = logs.map(e =>
+        `<div><span class="t">[${esc(e.time)}]</span> <span class="l-${esc(e.level)}">${esc(e.msg)}</span></div>`
+      ).join("");
+      const box = document.getElementById("logbox");
+      box.scrollTop = box.scrollHeight;
+    } catch (e) {}
+  }
+
+  // ---------- 设置 ----------
+  function openSettings() {
+    api().GetConfig().then(cfg => {
+      document.getElementById("cfgAk").value = cfg.access_key_id || "";
+      document.getElementById("cfgSk").value = cfg.access_key_secret || "";
+      document.getElementById("cfgRegions").value = (cfg.regions || []).join(",");
+      document.getElementById("cfgEmail").value = cfg.acme_email || "";
+      document.getElementById("cfgCa").value = cfg.acme_dir_url || "";
+      document.getElementById("cfgKid").value = cfg.eab_kid || "";
+      document.getElementById("cfgHmac").value = cfg.eab_hmac || "";
+      document.getElementById("cfgKeyType").value = cfg.key_type || "";
+      document.getElementById("cfgSmtpHost").value = cfg.smtp_host || "";
+      document.getElementById("cfgSmtpPort").value = cfg.smtp_port || "";
+      document.getElementById("cfgSmtpUser").value = cfg.smtp_user || "";
+      document.getElementById("cfgSmtpPass").value = cfg.smtp_pass || "";
+      document.getElementById("cfgMailTo").value = cfg.mail_to || "";
+      fillRegions(cfg);
+    }).catch(() => {});
+    document.getElementById("settings").style.display = "flex";
+  }
+  function closeSettings() { document.getElementById("settings").style.display = "none"; }
+
+  async function saveCfg() {
+    try {
+      const cfg = await api().GetConfig();
+      cfg.access_key_id = document.getElementById("cfgAk").value.trim();
+      cfg.access_key_secret = document.getElementById("cfgSk").value.trim();
+      const regions = document.getElementById("cfgRegions").value.split(",").map(s => s.trim()).filter(Boolean);
+      if (regions.length) cfg.regions = regions;
+      cfg.acme_email = document.getElementById("cfgEmail").value.trim();
+      cfg.acme_dir_url = document.getElementById("cfgCa").value.trim();
+      cfg.eab_kid = document.getElementById("cfgKid").value.trim();
+      cfg.eab_hmac = document.getElementById("cfgHmac").value.trim();
+      cfg.key_type = document.getElementById("cfgKeyType").value.trim();
+      cfg.smtp_host = document.getElementById("cfgSmtpHost").value.trim();
+      cfg.smtp_port = parseInt(document.getElementById("cfgSmtpPort").value.trim(), 10) || 0;
+      cfg.smtp_user = document.getElementById("cfgSmtpUser").value.trim();
+      cfg.smtp_pass = document.getElementById("cfgSmtpPass").value.trim();
+      cfg.mail_to = document.getElementById("cfgMailTo").value.trim();
+
+      await api().SaveConfig(cfg);
+      closeSettings();
+      refreshApplyHint(cfg);
+      fillRegions(cfg);
+      toast("✅ 配置已保存");
+    } catch (e) { toast("❌ " + e, 4000); }
+  }
+
+  async function importAK() {
+    try {
+      const msg = await api().ImportAliyunConfig();
+      openSettings(); toast("✅ " + msg, 4000);
+    } catch (e) { toast("❌ " + e, 4000); }
+  }
+
+  window.addEventListener("DOMContentLoaded", init);
+</script>
+</body>
+</html>

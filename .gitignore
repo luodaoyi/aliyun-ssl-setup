@@ -1,0 +1,37 @@
+# 构建产物与运行时数据（含 config.json 真实凭证，禁止入库）
+build/bin/
+.gocache/
+_wbind_*.exe
+*.exe.new
+
+# 日志与临时文件
+*.log
+/*.png
+.edgedata*/
+_hb/
+/_*.txt
+/b[0-9]*.txt
+/bl.txt
+_gomod_copy.txt
+_gv.txt
+
+# 调试/验证临时脚本与产物
+progress-preview.html
+frontend/dist/index_new.html
+frontend/dist2/
+cap.py
+findwin.py
+listwin.py
+shot.py
+verify.py
+analyze.py
+tmp_check.js
+_wbind.exe
+/_chk.js
+/_t1.mod
+/build_status.txt
+build/*.png
+
+# Go
+*.test
+*.out
