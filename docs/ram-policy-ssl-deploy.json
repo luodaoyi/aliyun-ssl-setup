@@ -1,0 +1,39 @@
+{
+  "Version": "1",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "alidns:AddDomainRecord",
+        "alidns:DeleteDomainRecord"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "yundun-cert:UploadUserCertificate",
+        "cas:UploadUserCertificate"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": "oss:PutCname",
+      "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": "cdn:SetCdnDomainSSLCertificate",
+      "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "slb:UploadServerCertificate",
+        "slb:SetLoadBalancerHTTPSListenerAttribute"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
