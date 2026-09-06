@@ -14,6 +14,10 @@ export function GetConfig() {
   return window['go']['main']['App']['GetConfig']();
 }
 
+export function GetDeployProgress() {
+  return window['go']['main']['App']['GetDeployProgress']();
+}
+
 export function GetLastScan() {
   return window['go']['main']['App']['GetLastScan']();
 }
