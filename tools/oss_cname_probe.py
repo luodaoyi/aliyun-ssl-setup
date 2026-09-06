@@ -7,7 +7,8 @@ import base64
 import urllib.request
 from datetime import datetime, timezone
 
-cfg = json.load(open(r"C:\Users\asura\WorkBuddy\2026-08-25-11-39-38\sslpanel-app\build\bin\config.json", encoding="utf-8"))
+# 与 Wails 打包 exe 同目录：仓库内为 build/bin/config.json
+cfg = json.load(open("build/bin/config.json", encoding="utf-8"))
 AK, SK = cfg["access_key_id"], cfg["access_key_secret"]
 
 
