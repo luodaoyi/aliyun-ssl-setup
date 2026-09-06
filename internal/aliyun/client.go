@@ -309,35 +309,61 @@ func (c *Client) OSSPutCname(bucket, location, domain, certID, certPEM, keyPEM s
 	}
 	host := bucket + "." + loc + ".aliyuncs.com"
 
+	buildBody := func(cfg string) []byte {
+		return []byte(`<?xml version="1.0" encoding="UTF-8"?>
+<BucketCnameConfiguration>
+  <Cname>
+    <Domain>` + xmlEscape(domain) + `</Domain>` +
+			func() string {
+				if cfg == "" {
+					return ""
+				}
+				return "<CertificateConfiguration>" + cfg + "</CertificateConfiguration>"
+			}() + `
+  </Cname>
+</BucketCnameConfiguration>`)
+	}
+
+	// 该域名只要当前绑定着证书管家（CAS）证书，OSS 就要求带上 PreviousCertId，
+	// 否则报 409 CasRenewCertificateConflict（The previous certificate Id is not matched）。
+	// 注意：重复部署同一张证书时同样不能省（prev == certID 也要带，否则依然 409）。
+	prev := c.ossCurrentCertID(bucket, loc, domain)
+
 	var certCfg string
-	if strings.TrimSpace(certID) != "" {
-		certCfg = "<CertId>" + xmlEscape(certID) + "</CertId>"
-		// 该域名之前绑定过证书管家（CAS）证书时，OSS 要求替换必须带上原证书 ID，
-		// 否则报 409 CasRenewCertificateConflict（The previous certificate Id is not matched）
-		if prev := c.ossCurrentCertID(bucket, loc, domain); prev != "" && prev != certID {
-			certCfg += "<PreviousCertId>" + xmlEscape(prev) + "</PreviousCertId>"
+	switch {
+	case strings.TrimSpace(certID) != "":
+		if prev == certID {
+			return nil // 已是目标证书，无需重复绑定
 		}
-	} else if strings.TrimSpace(certPEM) != "" {
+		certCfg = "<CertId>" + xmlEscape(certID) + "</CertId>"
+	case strings.TrimSpace(certPEM) != "":
 		certCfg = "<Certificate>" + xmlEscape(certPEM) + "</Certificate>" +
 			"<PrivateKey>" + xmlEscape(keyPEM) + "</PrivateKey>" +
 			"<Force>true</Force>"
 	}
+	if prev != "" {
+		certCfg += "<PreviousCertId>" + xmlEscape(prev) + "</PreviousCertId>"
+	}
 
-	body := []byte(`<?xml version="1.0" encoding="UTF-8"?>
-<BucketCnameConfiguration>
-  <Cname>
-    <Domain>` + xmlEscape(domain) + `</Domain>` +
-		func() string {
-			if certCfg == "" {
-				return ""
-			}
-			return "<CertificateConfiguration>" + certCfg + "</CertificateConfiguration>"
-		}() + `
-  </Cname>
-</BucketCnameConfiguration>`)
-
+	body := buildBody(certCfg)
 	_, err := c.ossPOST(host, "/?cname&comp=add", "/"+bucket+"/?cname&comp=add", body)
 	if err != nil {
+		// 旧证书 ID 可能是刚查到的过期值（例如别的程序刚换过），重新查一次再重试
+		if strings.Contains(err.Error(), "CasRenewCertificateConflict") {
+			if fresh := c.ossCurrentCertID(bucket, loc, domain); fresh != "" && fresh != prev {
+				retry := certCfg
+				if strings.Contains(retry, "<PreviousCertId>") {
+					retry = strings.ReplaceAll(retry,
+						"<PreviousCertId>"+xmlEscape(prev)+"</PreviousCertId>",
+						"<PreviousCertId>"+xmlEscape(fresh)+"</PreviousCertId>")
+				} else {
+					retry += "<PreviousCertId>" + xmlEscape(fresh) + "</PreviousCertId>"
+				}
+				if _, err2 := c.ossPOST(host, "/?cname&comp=add", "/"+bucket+"/?cname&comp=add", buildBody(retry)); err2 == nil {
+					return nil
+				}
+			}
+		}
 		return fmt.Errorf("绑定域名 %s 失败: %w", domain, err)
 	}
 	return nil
