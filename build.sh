@@ -7,8 +7,8 @@
 #   - 唯一可行的覆盖方式：先写到一个全新的临时文件，再 `mv -f` 覆盖目标
 #   → 所以本脚本所有产物都先写临时名，最后再 mv 到位。日志文件同理，用时间戳命名。
 #
-# 坑 1：.workbuddy/binaries/go/go 是 go1.23.4，而 go.mod 要求 go >= 1.25.0。
-#       go1.25 在 GOPATH 的 module cache 里，直接当 GOROOT 用。
+# 坑 1：go.mod 可能要求较新的 Go。优先用 PATH 上的 go/wails；也可通过可选环境变量
+#       GO_TOOLCHAIN（工具链根目录，其下有 bin/go）、GOROOT、GOPATH 指定。
 #       别用 GOTOOLCHAIN=auto —— 会去连 sum.golang.org 校验，卡死约 20 分钟。
 #
 # 坑 2：绝不能设 GOFLAGS=-mod=mod。go 会尝试写 go.mod（受上面规则保护），
@@ -19,8 +19,8 @@
 #
 # 坑 4：wails 默认跑 `go mod tidy`（触发写 go.mod，见坑 2），必须加 -m 跳过。
 #
-# 坑 5：系统 GOCACHE（AppData\Local\go-build）的 trim.txt 停在 2022 年，go 每次构建末尾
-#       会做全量缓存清理（402MB / 十几万文件），沙箱下极慢，表现为"编译完了但 go.exe 不退出"。
+# 坑 5：系统 GOCACHE（如 AppData\Local\go-build）的 trim.txt 过旧时，go 每次构建末尾
+#       会做全量缓存清理（数百 MB / 十几万文件），沙箱下极慢，表现为"编译完了但 go.exe 不退出"。
 #       改用项目内 .gocache，并每次构建前刷新 trim.txt（写失败也不致命，仅提示）。
 #
 # 坑 6：长时间编译必须后台跑：bash build.sh > build_<时间戳>.log 2>&1 &
@@ -28,17 +28,37 @@
 set -e
 cd "$(dirname "$0")"
 
-TC='/c/Users/asura/.workbuddy/binaries/go/gopath/pkg/mod/golang.org/toolchain@v0.0.1-go1.25.0.windows-amd64'
-GOPATH_WIN='C:\Users\asura\.workbuddy\binaries\go\gopath'
+# 可选覆盖：GO_TOOLCHAIN（含 bin/ 的工具链根）、GOROOT、GOPATH
+if [ -n "${GO_TOOLCHAIN:-}" ]; then
+  export PATH="${GO_TOOLCHAIN}/bin:${PATH}"
+fi
+if [ -n "${GOROOT:-}" ]; then
+  export GOROOT
+fi
+if [ -n "${GOPATH:-}" ]; then
+  export PATH="${GOPATH}/bin:${PATH}"
+  export GOPATH
+fi
 
-export PATH="$TC/bin:/c/Users/asura/.workbuddy/binaries/go/gopath/bin:$PATH"
-export GOROOT="C:\\Users\\asura\\.workbuddy\\binaries\\go\\gopath\\pkg\\mod\\golang.org\\toolchain@v0.0.1-go1.25.0.windows-amd64"
-export GOPATH="$GOPATH_WIN"
+command -v go >/dev/null 2>&1 || {
+  echo "error: go not found on PATH (install Go, or set GO_TOOLCHAIN / GOROOT)" >&2
+  exit 1
+}
+command -v wails >/dev/null 2>&1 || {
+  echo "error: wails not found on PATH (install wails into GOPATH/bin, or set GOPATH)" >&2
+  exit 1
+}
+
 export GOTOOLCHAIN=local
 export GOPROXY=off
 unset GOFLAGS
 
-export GOCACHE="$(pwd -W)/.gocache"
+# Git Bash 下 pwd -W 给出 Windows 路径；其它环境回退到普通 pwd
+if GOCACHE_ROOT="$(pwd -W 2>/dev/null)"; then
+  export GOCACHE="${GOCACHE_ROOT}/.gocache"
+else
+  export GOCACHE="$(pwd)/.gocache"
+fi
 mkdir -p "$GOCACHE"
 STAMP="$(date +%s)"
 date +%s > "$GOCACHE/trim_$STAMP.txt" 2>/dev/null \
