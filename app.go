@@ -63,6 +63,8 @@ type App struct {
 	progress *aliyun.Progress
 
 	applyProgress *aliyun.Progress // 证书申请实时进度
+
+	deployProgress *aliyun.Progress // 证书部署实时进度
 }
 
 func NewApp() *App {
@@ -239,6 +241,13 @@ func (a *App) GetApplyProgress() *aliyun.Progress {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.applyProgress
+}
+
+// GetDeployProgress 返回当前证书部署进度（供前端切回页面时补齐状态）
+func (a *App) GetDeployProgress() *aliyun.Progress {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.deployProgress
 }
 
 // StartScan 启动一次扫描（异步），过程中推送 scan:progress，完成后推送 scan:done
@@ -600,6 +609,15 @@ func (a *App) StartDeploy(req DeployRequest) (string, error) {
 		KeyPEM:  string(keyPEM),
 	}
 
+	// 实时进度：状态落 a.deployProgress + 事件推送到前端
+	setProgress := func(p aliyun.Progress) {
+		a.mu.Lock()
+		a.deployProgress = &p
+		a.mu.Unlock()
+		wruntime.EventsEmit(a.ctx, "deploy:progress", p)
+	}
+	setProgress(aliyun.Progress{Stage: "init", Title: "部署证书", Detail: "证书：" + rec.Key, Level: "info", Percent: 5})
+
 	go func() {
 		defer func() {
 			a.mu.Lock()
@@ -609,9 +627,30 @@ func (a *App) StartDeploy(req DeployRequest) (string, error) {
 
 		cl := aliyun.NewClient(cfg.AccessKeyID, cfg.AccessKeySecret)
 
+		// 先统计部署任务清单（用于精确的进度百分比）
+		type depTask struct {
+			kind, name, bucket, region string
+		}
+		var tasks []depTask
+		for _, e := range scan.Certs {
+			if req.Domain != "" && e.Name != req.Domain {
+				continue
+			}
+			if !certCovers(rec.Domains, e.Name) {
+				continue
+			}
+			if contains(req.Targets, "oss") && e.Source == "oss" && e.Bucket != "" {
+				tasks = append(tasks, depTask{"oss", e.Name, e.Bucket, e.Region})
+			}
+			if contains(req.Targets, "cdn") && e.Source == "cdn" {
+				tasks = append(tasks, depTask{"cdn", e.Name, "", ""})
+			}
+		}
+
 		// 需要引用证书管家时先上传一次
 		needCAS := contains(req.Targets, "oss") || contains(req.Targets, "cdn")
 		if needCAS && rec.CertID == "" {
+			setProgress(aliyun.Progress{Stage: "cas", Title: "部署证书", Detail: "上传证书到证书管家…", Level: "info", Percent: 12})
 			id, err := deploy.UploadToCAS(cl, cert)
 			if err != nil {
 				a.log("warn", "上传到证书管家失败，改用直传 PEM：%v", err)
@@ -628,6 +667,7 @@ func (a *App) StartDeploy(req DeployRequest) (string, error) {
 				a.mu.Unlock()
 				a.saveIssued()
 			}
+			setProgress(aliyun.Progress{Stage: "cas", Title: "部署证书", Detail: "证书管家就绪", Level: "info", Percent: 28})
 		} else if rec.CertID != "" {
 			cert.CertID = rec.CertID
 		}
@@ -635,36 +675,35 @@ func (a *App) StartDeploy(req DeployRequest) (string, error) {
 		var errs []string
 		done := 0
 
-		for _, e := range scan.Certs {
-			if req.Domain != "" && e.Name != req.Domain {
-				continue
+		for i, t := range tasks {
+			pct := 35
+			if n := len(tasks); n > 0 {
+				pct = 35 + (i+1)*50/n
 			}
-			if !certCovers(rec.Domains, e.Name) {
-				continue
-			}
-
-			if contains(req.Targets, "oss") && e.Source == "oss" && e.Bucket != "" {
-				if err := deploy.DeployOSS(cl, e.Bucket, e.Region, e.Name, cert); err != nil {
-					errs = append(errs, fmt.Sprintf("OSS %s: %v", e.Name, err))
-					a.log("err", "OSS 部署失败 %s：%v", e.Name, err)
+			if t.kind == "oss" {
+				setProgress(aliyun.Progress{Stage: "oss", Title: "部署证书", Detail: "更新 OSS 域名 " + t.name + "（bucket " + t.bucket + "）…", Level: "info", Percent: pct})
+				if err := deploy.DeployOSS(cl, t.bucket, t.region, t.name, cert); err != nil {
+					errs = append(errs, fmt.Sprintf("OSS %s: %v", t.name, err))
+					a.log("err", "OSS 部署失败 %s：%v", t.name, err)
 				} else {
 					done++
-					a.log("ok", "OSS 已更新：%s（bucket %s）", e.Name, e.Bucket)
+					a.log("ok", "OSS 已更新：%s（bucket %s）", t.name, t.bucket)
 				}
 			}
-
-			if contains(req.Targets, "cdn") && e.Source == "cdn" {
-				if err := deploy.DeployCDN(cl, e.Name, cert); err != nil {
-					errs = append(errs, fmt.Sprintf("CDN %s: %v", e.Name, err))
-					a.log("err", "CDN 部署失败 %s：%v", e.Name, err)
+			if t.kind == "cdn" {
+				setProgress(aliyun.Progress{Stage: "cdn", Title: "部署证书", Detail: "更新 CDN 域名 " + t.name + "…", Level: "info", Percent: pct})
+				if err := deploy.DeployCDN(cl, t.name, cert); err != nil {
+					errs = append(errs, fmt.Sprintf("CDN %s: %v", t.name, err))
+					a.log("err", "CDN 部署失败 %s：%v", t.name, err)
 				} else {
 					done++
-					a.log("ok", "CDN 已更新：%s", e.Name)
+					a.log("ok", "CDN 已更新：%s", t.name)
 				}
 			}
 		}
 
 		if contains(req.Targets, "slb") {
+			setProgress(aliyun.Progress{Stage: "slb", Title: "部署证书", Detail: "更新 SLB 监听证书…", Level: "info", Percent: 90})
 			port := req.Port
 			if port == 0 {
 				port = 443
@@ -684,8 +723,16 @@ func (a *App) StartDeploy(req DeployRequest) (string, error) {
 
 		if done == 0 && len(errs) == 0 {
 			a.log("warn", "没有匹配到可部署的目标（域名是否已被该证书覆盖？）")
+			setProgress(aliyun.Progress{Stage: "done", Title: "部署证书", Detail: "没有匹配到可部署的目标（域名是否已被该证书覆盖？）", Level: "err", Percent: 100})
 		} else {
 			a.log("ok", "部署完成：成功 %d 项，失败 %d 项", done, len(errs))
+			lvl := "ok"
+			detail := fmt.Sprintf("部署完成：成功 %d 项，失败 %d 项", done, len(errs))
+			if len(errs) > 0 {
+				lvl = "err"
+				detail = fmt.Sprintf("部署完成：成功 %d 项，失败 %d 项（%s）", done, len(errs), strings.Join(errs, "；"))
+			}
+			setProgress(aliyun.Progress{Stage: "done", Title: "部署证书", Detail: detail, Level: lvl, Percent: 100})
 		}
 
 		wruntime.EventsEmit(a.ctx, "deploy:done", map[string]any{
