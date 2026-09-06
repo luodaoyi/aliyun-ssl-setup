@@ -45,18 +45,37 @@ func (p *alidnsProvider) Timeout() (time.Duration, time.Duration) {
 	return 120 * time.Second, 5 * time.Second
 }
 
+// challengeRecordName 计算 DNS-01 应写入的记录名与值。
+// lego 默认跟随 CNAME：若 _acme-challenge 名下命中 CNAME 别名（含泛解析），
+// EffectiveFQDN 会指向别名终点。当终点不在本账号的云解析里时无法写入，
+// 此时回退到原始验证名 FQDN——精确 TXT 记录会遮蔽同名的泛解析 CNAME，
+// Let's Encrypt 校验时能直接读到该 TXT。
+func (p *alidnsProvider) challengeRecordName(domain, keyAuth string) (fqdn, value string, err error) {
+	info := dns01.GetChallengeInfo(domain, keyAuth)
+	if _, err := p.findZone(info.EffectiveFQDN); err == nil {
+		return info.EffectiveFQDN, info.Value, nil
+	}
+	if _, err := p.findZone(info.FQDN); err != nil {
+		return "", "", fmt.Errorf("alicloud: %w", err)
+	}
+	return info.FQDN, info.Value, nil
+}
+
 // Present 添加 _acme-challenge TXT 记录
 func (p *alidnsProvider) Present(domain, token, keyAuth string) error {
-	info := dns01.GetChallengeInfo(domain, keyAuth)
+	fqdn, value, err := p.challengeRecordName(domain, keyAuth)
+	if err != nil {
+		return err
+	}
 	if p.onPresenting != nil {
-		p.onPresenting(info.EffectiveFQDN)
+		p.onPresenting(fqdn)
 	}
 
-	zone, err := p.findZone(info.EffectiveFQDN)
+	zone, err := p.findZone(fqdn)
 	if err != nil {
 		return fmt.Errorf("alicloud: %w", err)
 	}
-	rr, err := dns01.ExtractSubDomain(info.EffectiveFQDN, zone)
+	rr, err := dns01.ExtractSubDomain(fqdn, zone)
 	if err != nil {
 		return fmt.Errorf("alicloud: %w", err)
 	}
@@ -65,27 +84,30 @@ func (p *alidnsProvider) Present(domain, token, keyAuth string) error {
 		"DomainName": zone,
 		"RR":        rr,
 		"Type":      "TXT",
-		"Value":     info.Value,
+		"Value":     value,
 		"TTL":       p.ttl,
 	})
 	if err != nil {
 		return fmt.Errorf("alicloud: 添加 TXT 记录失败（%s.%s）: %w", rr, zone, err)
 	}
 	if p.onPresent != nil {
-		p.onPresent(info.EffectiveFQDN)
+		p.onPresent(fqdn)
 	}
 	return nil
 }
 
-// CleanUp 清除验证用 TXT 记录
+// CleanUp 清除验证用 TXT 记录（只删本次写入的值，不动同名的其他 TXT）
 func (p *alidnsProvider) CleanUp(domain, token, keyAuth string) error {
-	info := dns01.GetChallengeInfo(domain, keyAuth)
+	fqdn, value, err := p.challengeRecordName(domain, keyAuth)
+	if err != nil {
+		return err
+	}
 
-	zone, err := p.findZone(info.EffectiveFQDN)
+	zone, err := p.findZone(fqdn)
 	if err != nil {
 		return fmt.Errorf("alicloud: %w", err)
 	}
-	rr, err := dns01.ExtractSubDomain(info.EffectiveFQDN, zone)
+	rr, err := dns01.ExtractSubDomain(fqdn, zone)
 	if err != nil {
 		return fmt.Errorf("alicloud: %w", err)
 	}
@@ -95,13 +117,13 @@ func (p *alidnsProvider) CleanUp(domain, token, keyAuth string) error {
 		return err
 	}
 	for _, r := range records {
-		if r.Type == "TXT" && r.RR == rr {
+		if r.Type == "TXT" && r.RR == rr && strings.TrimSpace(r.Value) == strings.TrimSpace(value) {
 			_, _ = p.cl.RPCCall(dnsEndpoint, dnsVersion, "DeleteDomainRecord",
 				map[string]string{"RecordId": r.RecordID})
 		}
 	}
 	if p.onCleanup != nil {
-		p.onCleanup(info.EffectiveFQDN)
+		p.onCleanup(fqdn)
 	}
 	return nil
 }
