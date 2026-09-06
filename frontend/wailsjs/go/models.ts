@@ -72,6 +72,11 @@ export namespace main {
 	    smtp_user: string;
 	    smtp_pass: string;
 	    mail_to: string;
+	    mail_from: string;
+	    auto_enabled: boolean;
+	    auto_hour: number;
+	    auto_threshold: number;
+	    auto_targets: string[];
 	
 	    static createFrom(source: any = {}) {
 	        return new AppConfig(source);
@@ -92,7 +97,120 @@ export namespace main {
 	        this.smtp_user = source["smtp_user"];
 	        this.smtp_pass = source["smtp_pass"];
 	        this.mail_to = source["mail_to"];
+	        this.mail_from = source["mail_from"];
+	        this.auto_enabled = source["auto_enabled"];
+	        this.auto_hour = source["auto_hour"];
+	        this.auto_threshold = source["auto_threshold"];
+	        this.auto_targets = source["auto_targets"];
 	    }
+	}
+	export class AutoRenewItem {
+	    target: string;
+	    source: string;
+	    ok: boolean;
+	    error?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new AutoRenewItem(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.target = source["target"];
+	        this.source = source["source"];
+	        this.ok = source["ok"];
+	        this.error = source["error"];
+	    }
+	}
+	export class AutoRenewGroup {
+	    key: string;
+	    domains: string[];
+	    triggers: string[];
+	    applied: boolean;
+	    items: AutoRenewItem[];
+	    error?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new AutoRenewGroup(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.key = source["key"];
+	        this.domains = source["domains"];
+	        this.triggers = source["triggers"];
+	        this.applied = source["applied"];
+	        this.items = this.convertValues(source["items"], AutoRenewItem);
+	        this.error = source["error"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class AutoRenewReport {
+	    // Go type: time
+	    time: any;
+	    manual: boolean;
+	    scanned: number;
+	    renewed: number;
+	    deployed: number;
+	    failed: number;
+	    groups: AutoRenewGroup[];
+	    mail_sent: boolean;
+	    mail_error?: string;
+	    error?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new AutoRenewReport(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.time = this.convertValues(source["time"], null);
+	        this.manual = source["manual"];
+	        this.scanned = source["scanned"];
+	        this.renewed = source["renewed"];
+	        this.deployed = source["deployed"];
+	        this.failed = source["failed"];
+	        this.groups = this.convertValues(source["groups"], AutoRenewGroup);
+	        this.mail_sent = source["mail_sent"];
+	        this.mail_error = source["mail_error"];
+	        this.error = source["error"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class DeployRequest {
 	    cert_key: string;

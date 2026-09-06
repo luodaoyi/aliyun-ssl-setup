@@ -418,6 +418,32 @@
     <input id="cfgSmtpPass" type="password">
     <label>收件人</label>
     <input id="cfgMailTo" type="text">
+    <label>发件人（留空 = 账号邮箱）</label>
+    <input id="cfgMailFrom" type="text">
+
+    <h3>无人值守自动续期</h3>
+    <label class="chkline">
+      <input type="checkbox" id="cfgAutoEnabled"> 每日自动检查并续期临期证书（需保持本面板运行）
+    </label>
+    <label>每天执行时间</label>
+    <select id="cfgAutoHour"></select>
+    <label>剩余天数阈值（低于此值自动续期）</label>
+    <input id="cfgAutoThreshold" type="text" placeholder="15">
+    <label>允许自动替换证书的服务</label>
+    <div class="checks">
+      <label><input type="checkbox" id="cfgAutoOss" checked> OSS 自定义域名</label>
+      <label><input type="checkbox" id="cfgAutoCdn" checked> CDN 加速域名</label>
+      <label><input type="checkbox" id="cfgAutoSlb" checked> SLB HTTPS 监听</label>
+    </div>
+    <div class="tip">
+      流程：每日到点自动扫描 → 挑出剩余天数低于阈值的证书 → 按原证书域名组合重新签发
+      → 上传证书管家 → 自动替换回原挂载位置（OSS/CDN/SLB）→ 邮件汇总结果。
+      证书管家里托管的证书（来源 CAS）不会被动到，避免重复续期。
+    </div>
+    <div class="row" style="margin-top:8px">
+      <button class="btn btn-green" id="autoRunBtn" onclick="runAutoNow()">立即执行一次</button>
+      <span class="muted" id="autoStatus"></span>
+    </div>
 
     <div class="row">
       <button class="btn btn-gray" onclick="importAK()">导入本机 aliyun CLI AK</button>
@@ -495,6 +521,13 @@
         toast("❌ 申请失败：" + r.error, 6000);
       }
     });
+    window.runtime.EventsOn("auto:done", (r) => {
+      if (!r) return;
+      if (r.error) toast("⚠ 自动续期：" + r.error, 6000);
+      else if (!r.manual) toast(`✅ 自动续期完成：签发 ${r.renewed} 张，部署 ${r.deployed} 项，失败 ${r.failed} 项`, 6000);
+      loadIssued();
+      loadAutoStatus();
+    });
     window.runtime.EventsOn("deploy:progress", (p) => deployOnProgress(p));
     window.runtime.EventsOn("deploy:done", (r) => {
       document.getElementById("deployBtn").disabled = false;
@@ -512,8 +545,10 @@
 
     const cfg = await api().GetConfig();
     fillRegions(cfg);
+    fillAutoHours();
     loadLogs();
     loadIssued();
+    loadAutoStatus();
 
     const last = await api().GetLastScan();
     if (last && last.certs && last.certs.length) applyResult(last);
@@ -963,7 +998,17 @@
       document.getElementById("cfgSmtpUser").value = cfg.smtp_user || "";
       document.getElementById("cfgSmtpPass").value = cfg.smtp_pass || "";
       document.getElementById("cfgMailTo").value = cfg.mail_to || "";
+      document.getElementById("cfgMailFrom").value = cfg.mail_from || "";
+      document.getElementById("cfgAutoEnabled").checked = !!cfg.auto_enabled;
+      document.getElementById("cfgAutoHour").value = String(cfg.auto_hour || 9);
+      document.getElementById("cfgAutoThreshold").value = String(cfg.auto_threshold || 15);
+      const tg = cfg.auto_targets || [];
+      const has = (t) => tg.length === 0 || tg.includes(t);
+      document.getElementById("cfgAutoOss").checked = has("oss");
+      document.getElementById("cfgAutoCdn").checked = has("cdn");
+      document.getElementById("cfgAutoSlb").checked = has("slb");
       fillRegions(cfg);
+      loadAutoStatus();
     }).catch(() => {});
     document.getElementById("settings").style.display = "flex";
   }
@@ -986,6 +1031,15 @@
       cfg.smtp_user = document.getElementById("cfgSmtpUser").value.trim();
       cfg.smtp_pass = document.getElementById("cfgSmtpPass").value.trim();
       cfg.mail_to = document.getElementById("cfgMailTo").value.trim();
+      cfg.mail_from = document.getElementById("cfgMailFrom").value.trim();
+      cfg.auto_enabled = document.getElementById("cfgAutoEnabled").checked;
+      cfg.auto_hour = parseInt(document.getElementById("cfgAutoHour").value, 10) || 9;
+      cfg.auto_threshold = parseInt(document.getElementById("cfgAutoThreshold").value.trim(), 10) || 15;
+      const tg = [];
+      if (document.getElementById("cfgAutoOss").checked) tg.push("oss");
+      if (document.getElementById("cfgAutoCdn").checked) tg.push("cdn");
+      if (document.getElementById("cfgAutoSlb").checked) tg.push("slb");
+      cfg.auto_targets = tg;
 
       await api().SaveConfig(cfg);
       closeSettings();
@@ -993,6 +1047,40 @@
       fillRegions(cfg);
       toast("✅ 配置已保存");
     } catch (e) { toast("❌ " + e, 4000); }
+  }
+
+  // ---------- 自动续期 ----------
+  function fillAutoHours() {
+    const sel = document.getElementById("cfgAutoHour");
+    if (!sel || sel.options.length) return;
+    for (let h = 0; h < 24; h++) {
+      const o = document.createElement("option");
+      o.value = String(h);
+      o.textContent = String(h).padStart(2, "0") + ":00";
+      sel.appendChild(o);
+    }
+  }
+
+  async function loadAutoStatus() {
+    try {
+      const s = await api().GetAutoStatus();
+      const el = document.getElementById("autoStatus");
+      if (el) el.textContent = s.last_run ? ("上次执行：" + s.last_run + " — " + (s.last_text || "")) : "尚未执行过";
+    } catch (e) {}
+  }
+
+  async function runAutoNow() {
+    const btn = document.getElementById("autoRunBtn");
+    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spin"></span>执行中…'; }
+    try {
+      const rep = await api().RunAutoRenewNow();
+      if (rep.error) toast("⚠ " + rep.error, 6000);
+      else toast(`✅ 续期完成：签发 ${rep.renewed} 张，部署 ${rep.deployed} 项，失败 ${rep.failed} 项`, 6000);
+      await loadAutoStatus();
+    } catch (e) { toast("❌ " + e, 6000); }
+    finally {
+      if (btn) { btn.disabled = false; btn.textContent = "立即执行一次"; }
+    }
   }
 
   async function importAK() {
