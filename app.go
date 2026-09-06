@@ -328,6 +328,60 @@ func (a *App) ListIssued() []store.IssuedCert {
 	return out
 }
 
+// UploadCertToAliyun 上传本地证书到阿里云证书管家（CAS），返回 CertID。
+// 已上传过（CertID 非空）直接返回 "already:<id>"，不重复上传。
+func (a *App) UploadCertToAliyun(key string) (string, error) {
+	if a.cfg.AccessKeyID == "" || a.cfg.AccessKeySecret == "" {
+		return "", fmt.Errorf("尚未配置 AccessKey")
+	}
+	a.mu.Lock()
+	var rec *store.IssuedCert
+	for i := range a.issued {
+		if a.issued[i].Key == key {
+			rec = &a.issued[i]
+			break
+		}
+	}
+	a.mu.Unlock()
+	if rec == nil {
+		return "", fmt.Errorf("未找到本地证书 %s", key)
+	}
+	if rec.CertID != "" {
+		return "already:" + rec.CertID, nil
+	}
+
+	certPEM, err := os.ReadFile(rec.CertPath)
+	if err != nil {
+		return "", fmt.Errorf("读取证书文件失败: %w", err)
+	}
+	keyPEM, err := os.ReadFile(rec.KeyPath)
+	if err != nil {
+		return "", fmt.Errorf("读取私钥文件失败: %w", err)
+	}
+
+	name := "sslpanel-" + key
+	if rec.NotAfter != "" {
+		name += "-" + strings.ReplaceAll(rec.NotAfter, "-", "")
+	}
+	cl := aliyun.NewClient(a.cfg.AccessKeyID, a.cfg.AccessKeySecret)
+	id, err := deploy.UploadToCAS(cl, deploy.Cert{Name: name, CertPEM: string(certPEM), KeyPEM: string(keyPEM)})
+	if err != nil {
+		return "", err
+	}
+	a.log("ok", "已上传到阿里云证书管家：%s（ID %s）", name, id)
+
+	a.mu.Lock()
+	for i := range a.issued {
+		if a.issued[i].Key == key {
+			a.issued[i].CertID = id
+			break
+		}
+	}
+	a.mu.Unlock()
+	a.saveIssued()
+	return id, nil
+}
+
 // IsBusy 是否有申请/部署任务在跑
 func (a *App) IsBusy() bool {
 	a.mu.Lock()

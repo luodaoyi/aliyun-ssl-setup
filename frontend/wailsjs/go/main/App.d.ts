@@ -34,3 +34,5 @@ export function StartApply(arg1:Array<string>):Promise<string>;
 export function StartDeploy(arg1:main.DeployRequest):Promise<string>;
 
 export function StartScan():Promise<string>;
+
+export function UploadCertToAliyun(arg1:string):Promise<string>;

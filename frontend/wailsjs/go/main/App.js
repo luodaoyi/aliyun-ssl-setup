@@ -61,3 +61,7 @@ export function StartDeploy(arg1) {
 export function StartScan() {
   return window['go']['main']['App']['StartScan']();
 }
+
+export function UploadCertToAliyun(arg1) {
+  return window['go']['main']['App']['UploadCertToAliyun'](arg1);
+}
