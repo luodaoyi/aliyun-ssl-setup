@@ -25,6 +25,11 @@ const (
 type alidnsProvider struct {
 	cl  *aliyun.Client
 	ttl string
+
+	// 可选进度钩子（由 Obtain 设置，用于前端实时进度）
+	onPresenting func(fqdn string) // 开始写入 TXT 前
+	onPresent    func(fqdn string) // TXT 写入成功后
+	onCleanup    func(fqdn string) // 验证完成清理 TXT 后
 }
 
 // NewAliDNSProvider 构造 DNS-01 挑战提供者
@@ -43,6 +48,9 @@ func (p *alidnsProvider) Timeout() (time.Duration, time.Duration) {
 // Present 添加 _acme-challenge TXT 记录
 func (p *alidnsProvider) Present(domain, token, keyAuth string) error {
 	info := dns01.GetChallengeInfo(domain, keyAuth)
+	if p.onPresenting != nil {
+		p.onPresenting(info.EffectiveFQDN)
+	}
 
 	zone, err := p.findZone(info.EffectiveFQDN)
 	if err != nil {
@@ -62,6 +70,9 @@ func (p *alidnsProvider) Present(domain, token, keyAuth string) error {
 	})
 	if err != nil {
 		return fmt.Errorf("alicloud: 添加 TXT 记录失败（%s.%s）: %w", rr, zone, err)
+	}
+	if p.onPresent != nil {
+		p.onPresent(info.EffectiveFQDN)
 	}
 	return nil
 }
@@ -88,6 +99,9 @@ func (p *alidnsProvider) CleanUp(domain, token, keyAuth string) error {
 			_, _ = p.cl.RPCCall(dnsEndpoint, dnsVersion, "DeleteDomainRecord",
 				map[string]string{"RecordId": r.RecordID})
 		}
+	}
+	if p.onCleanup != nil {
+		p.onCleanup(info.EffectiveFQDN)
 	}
 	return nil
 }
