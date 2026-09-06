@@ -31,6 +31,7 @@ _wbind.exe
 /_t1.mod
 /build_status.txt
 build/*.png
+!build/appicon.png
 
 # Go
 *.test
