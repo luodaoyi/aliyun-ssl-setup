@@ -312,6 +312,11 @@ func (c *Client) OSSPutCname(bucket, location, domain, certID, certPEM, keyPEM s
 	var certCfg string
 	if strings.TrimSpace(certID) != "" {
 		certCfg = "<CertId>" + xmlEscape(certID) + "</CertId>"
+		// 该域名之前绑定过证书管家（CAS）证书时，OSS 要求替换必须带上原证书 ID，
+		// 否则报 409 CasRenewCertificateConflict（The previous certificate Id is not matched）
+		if prev := c.ossCurrentCertID(bucket, loc, domain); prev != "" && prev != certID {
+			certCfg += "<PreviousCertId>" + xmlEscape(prev) + "</PreviousCertId>"
+		}
 	} else if strings.TrimSpace(certPEM) != "" {
 		certCfg = "<Certificate>" + xmlEscape(certPEM) + "</Certificate>" +
 			"<PrivateKey>" + xmlEscape(keyPEM) + "</PrivateKey>" +
@@ -344,6 +349,20 @@ func xmlEscape(s string) string {
 		return s
 	}
 	return b.String()
+}
+
+// ossCurrentCertID 查询指定自定义域名当前绑定的证书 ID（查询失败或未绑定返回空串）
+func (c *Client) ossCurrentCertID(bucket, loc, domain string) string {
+	r, err := c.OSSGetCname(bucket, loc)
+	if err != nil || r == nil {
+		return ""
+	}
+	for _, cn := range r.Cnames {
+		if cn.Domain == domain && cn.Certificate != nil {
+			return strings.TrimSpace(cn.Certificate.CertID)
+		}
+	}
+	return ""
 }
 
 // ---------- TLS 直连探测 ----------
