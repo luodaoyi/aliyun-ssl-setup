@@ -1,5 +1,7 @@
-patched ok, len 5473
-push:
+name: Release
+
+on:
+  push:
     tags:
       - "v*"
   workflow_dispatch:
