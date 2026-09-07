@@ -1,5 +1,9 @@
 # aliyun-ssl-setup
 
+<p align="center">
+  <img src="build/appicon.png" width="96" alt="SSL 证书面板图标">
+</p>
+
 阿里云 SSL 证书桌面面板（Windows 单二进制，基于 Wails v2 + Go）。
 
 覆盖证书全生命周期：**检测 → 申请 → 部署 → 续期提醒**。
@@ -7,6 +11,38 @@
 - **检测**：扫描 CAS（证书管家）/ SLB / OSS / CDN / 云解析 DNS，汇总所有证书的有效期与绑定关系
 - **申请**：lego + ACME DNS-01（支持 Let's Encrypt / ZeroSSL），自动写 TXT 验证记录，支持通配符与多域名 SAN
 - **部署**：一键部署到 OSS 自定义域名 / CDN 加速域名 / SLB HTTPS 监听，部署后自动刷新检测结果
+
+## 界面预览
+
+> 以下截图均为内置示例数据（`tools/make_readme_shots.py` 生成，不含真实域名与凭证）。
+
+**证书库存** —— 汇总 5 类云资源的证书，按剩余天数红/橙/绿分级，支持按来源筛选与搜索：
+
+![证书库存](docs/screenshots/01-inventory.png)
+
+**检测实时进度** —— 点击「立即检测」后逐资源显示进度与阶段详情：
+
+![检测实时进度](docs/screenshots/02-scan-progress.png)
+
+**申请证书 + 证书管家同步** —— ACME DNS-01 全自动签发；已签发证书可一键同步到阿里云证书管家：
+
+![申请证书](docs/screenshots/03-apply.png)
+
+**申请实时进度** —— 写 TXT → 等待校验 → 签发，全链路打点：
+
+![申请实时进度](docs/screenshots/04-apply-progress.png)
+
+**部署实时进度** —— OSS / CDN / SLB 批量替换，逐项百分比：
+
+![部署实时进度](docs/screenshots/05-deploy-progress.png)
+
+**任务日志** —— 每一步操作都有可回溯的日志：
+
+![任务日志](docs/screenshots/06-logs.png)
+
+**设置** —— AccessKey / ACME / 邮件告警 / 无人值守自动续期，一站式配置：
+
+![设置](docs/screenshots/07-settings.png)
 
 ## 编译
 
