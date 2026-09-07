@@ -105,21 +105,24 @@ jobs:
           ls -la build/bin
 
           if [[ "$KIND" == "macos" ]]; then
-            cd build/bin
+            # Stay at repo root; zip from build/bin so final `ls out` still works under set -e.
             # Wails may name the bundle sslpanel.app, sslpanel-app.app, or ${ARTIFACT}.app
-            if [[ -d sslpanel.app ]]; then
-              zip -qry "../../out/${ARTIFACT}.zip" sslpanel.app
-            elif [[ -d sslpanel-app.app ]]; then
-              zip -qry "../../out/${ARTIFACT}.zip" sslpanel-app.app
-            elif [[ -d "${ARTIFACT}.app" ]]; then
-              zip -qry "../../out/${ARTIFACT}.zip" "${ARTIFACT}.app"
-            elif [[ -f "$ARTIFACT" ]]; then
-              zip -qry "../../out/${ARTIFACT}.zip" "$ARTIFACT"
-            elif [[ -f sslpanel ]]; then
-              zip -qry "../../out/${ARTIFACT}.zip" sslpanel
+            app=""
+            for cand in sslpanel.app sslpanel-app.app "${ARTIFACT}.app"; do
+              if [[ -d "build/bin/$cand" ]]; then
+                app="$cand"
+                break
+              fi
+            done
+            if [[ -n "$app" ]]; then
+              (cd build/bin && zip -qry "../../out/${ARTIFACT}.zip" "$app")
+            elif [[ -f "build/bin/$ARTIFACT" ]]; then
+              (cd build/bin && zip -qry "../../out/${ARTIFACT}.zip" "$ARTIFACT")
+            elif [[ -f build/bin/sslpanel ]]; then
+              (cd build/bin && zip -qry "../../out/${ARTIFACT}.zip" sslpanel)
             else
               echo "No macOS product found" >&2
-              ls -la .
+              ls -la build/bin
               exit 1
             fi
           else
