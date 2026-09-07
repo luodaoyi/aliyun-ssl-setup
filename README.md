@@ -88,25 +88,125 @@ bash build.sh
 | `eab_kid` / `eab_hmac` | 视 CA | ZeroSSL 强制 EAB（控制台 Developer 页生成）；**Let's Encrypt 留空即可** |
 | `key_type` | ❌ | 证书密钥类型：`ec256`（默认推荐）/ `rsa2048` / `rsa4096` |
 
-### 3. RAM 权限要求
+### 3. 创建 RAM 用户并获取 AccessKey（阿里云官方流程）
 
-建议 RAM 用户 + 最小权限，**不要用主账号 AK**。面板需要两类权限：
+> 以下步骤依据阿里云官方文档整理（[创建 RAM 用户](https://help.aliyun.com/zh/ram/user-guide/create-a-ram-user) / [创建 AccessKey](https://help.aliyun.com/zh/ram/user-guide/create-an-accesskey-pair)）。
+> ⚠️ **不要使用主账号 AccessKey**：主账号 AK 默认拥有全部权限，泄露后风险极高。务必按最小权限原则使用 RAM 用户。
 
-**① 只读权限（检测功能）**：挂系统策略 `AliyunReadOnlyAccess`。
+**前提**：使用阿里云主账号（或拥有 `AliyunRAMFullAccess` 权限的 RAM 用户）登录 [RAM 控制台](https://ram.console.aliyun.com/)。
 
-**② 写权限（申请 + 部署功能）**：自定义策略，最小 Action 集如下（完整可复制版本见 [`docs/ram-policy-ssl-deploy.json`](docs/ram-policy-ssl-deploy.json)）：
+#### 步骤 1：创建 RAM 用户
 
-| Action | 用途 |
-|--------|------|
-| `alidns:AddDomainRecord` / `DeleteDomainRecord` | ACME DNS-01 验证（写/删 TXT 记录） |
-| `yundun-cert:UploadUserCertificate` | 上传证书到证书管家（注意前缀是 **`yundun-cert:`**，不是 `cas:`） |
-| `oss:PutCname` | OSS 自定义域名挂证书 |
-| `cdn:SetCdnDomainSSLCertificate` | CDN 域名挂证书 |
-| `slb:UploadServerCertificate` / `SetLoadBalancerHTTPSListenerAttribute` | SLB 挂证书 / 更新 HTTPS 监听 |
+1. RAM 控制台左侧导航栏，选择 **身份管理** > **用户**，单击 **创建用户**
+2. 在 **用户账号信息** 区域填写：
+   - **登录名称**（必填）：如 `sslpanel`（仅限字母、数字、`.`、`-`、`_`，最多 64 字符）
+   - **显示名称**（选填）：如 `SSL 证书面板`
+3. 在 **访问方式** 区域，勾选 **使用永久 AccessKey 访问**（程序调用场景，**不要**勾选"控制台访问"）
+   - 勾选后需再勾选 **我确认必须创建 AccessKey** 确认框才能继续
+4. 单击 **确定** 完成创建
 
-> 已知坑：CAS 新版 API（2020-04-07）的 RamCode 是 `yundun-cert`，策略里写 `cas:UploadUserCertificate` 不生效，会报 `NoPermission`。
+#### 步骤 2：保存 AccessKey
 
-### 4. 权限自检方法
+创建用户时若勾选了"使用永久 AccessKey 访问"，系统会**自动生成** AccessKey 并在成功页展示；也可以之后补建：
+
+1. 在 **用户** 页面单击刚创建的 RAM 用户名称
+2. 切换到 **凭证管理** 标签页 > **AccessKey** 区域 > 单击 **创建 AccessKey**
+3. 在弹出的对话框中选择使用场景，勾选 **我确认必须创建 AccessKey**，单击 **继续创建**，按提示完成安全验证
+
+> 🔴 **关键**：**AccessKey Secret 只在创建时显示一次**，之后无法再查看。请在成功页面立即点击 **下载 CSV 文件** 或复制保存 `AccessKey ID` 和 `AccessKey Secret`。勾选 **我已保存好 AccessKey Secret** 后单击 **确定**。
+
+补充说明：
+
+- 每个 RAM 用户最多 2 个 AccessKey（一个日常使用，一个留作轮换），达上限需先禁用并删除旧 AK
+- 新创建的 RAM 用户**没有任何权限**，必须继续完成下一节授权，否则面板调用 API 会报 `Forbidden` / `NoPermission`
+
+### 4. 为 RAM 用户授权
+
+> 以下步骤依据官方文档整理（[管理 RAM 用户的权限](https://help.aliyun.com/zh/ram/user-guide/grant-permissions-to-the-ram-user) / [创建自定义权限策略](https://help.aliyun.com/zh/ram/user-guide/create-a-custom-policy)）。授权后立即生效，无需等待。
+
+面板需要两类权限：**① 只读权限**（检测功能，系统策略）+ **② 写权限**（申请 + 部署功能，自定义策略）。
+
+#### 步骤 1：授予只读权限（系统策略）
+
+1. RAM 控制台 **身份管理** > **用户**，在目标用户 **操作** 列单击 **新增授权**
+2. **资源范围** 选择 **账号级别**
+3. **授权主体** 已自动选中该 RAM 用户
+4. 在 **权限策略** 搜索框输入 `AliyunReadOnlyAccess`，勾选该系统策略
+5. （可选）填写备注，如"SSL 面板只读检测"
+6. 单击 **确认新增授权** > **关闭**
+
+#### 步骤 2：创建写权限自定义策略
+
+1. RAM 控制台左侧导航栏，选择 **权限管理** > **权限策略**，单击 **创建权限策略**
+2. 切换到 **脚本编辑** 页签，清空默认模板，粘贴以下 JSON（完整可下载版本见 [`docs/ram-policy-ssl-deploy.json`](docs/ram-policy-ssl-deploy.json)）：
+
+   ```json
+   {
+     "Version": "1",
+     "Statement": [
+       {
+         "Effect": "Allow",
+         "Action": [
+           "alidns:AddDomainRecord",
+           "alidns:DeleteDomainRecord"
+         ],
+         "Resource": "*"
+       },
+       {
+         "Effect": "Allow",
+         "Action": [
+           "yundun-cert:UploadUserCertificate",
+           "cas:UploadUserCertificate"
+         ],
+         "Resource": "*"
+       },
+       {
+         "Effect": "Allow",
+         "Action": "oss:PutCname",
+         "Resource": "*"
+       },
+       {
+         "Effect": "Allow",
+         "Action": "cdn:SetCdnDomainSSLCertificate",
+         "Resource": "*"
+       },
+       {
+         "Effect": "Allow",
+         "Action": [
+           "slb:UploadServerCertificate",
+           "slb:SetLoadBalancerHTTPSListenerAttribute"
+         ],
+         "Resource": "*"
+       }
+     ]
+   }
+   ```
+
+   各 Action 的用途：
+
+   | Action | 用途 |
+   |--------|------|
+   | `alidns:AddDomainRecord` / `DeleteDomainRecord` | ACME DNS-01 验证（写/删 TXT 记录） |
+   | `yundun-cert:UploadUserCertificate` | 上传证书到证书管家（注意前缀是 **`yundun-cert:`**，不是 `cas:`） |
+   | `oss:PutCname` | OSS 自定义域名挂证书 |
+   | `cdn:SetCdnDomainSSLCertificate` | CDN 域名挂证书 |
+   | `slb:UploadServerCertificate` / `SetLoadBalancerHTTPSListenerAttribute` | SLB 挂证书 / 更新 HTTPS 监听 |
+
+3. 单击页面上方 **优化策略** > **执行**（官方提供的高级优化：去重合并、收缩资源）
+4. 单击 **确定**，在对话框输入 **策略名称**（如 `sslpanel-deploy`）和 **备注**，再次 **确定**
+
+#### 步骤 3：把自定义策略授予 RAM 用户
+
+1. 回到 **身份管理** > **用户**，目标用户 **操作** 列单击 **新增授权**
+2. **资源范围** 选择 **账号级别**（RAM 用户管理类与跨服务操作必须账号级授权）
+3. **权限策略** 处切换到 **自定义策略** 标签，勾选刚才创建的 `sslpanel-deploy`
+4. 单击 **确认新增授权** > **关闭**
+
+> 已知坑：CAS 新版 API（2020-04-07）的 RamCode 是 `yundun-cert`，策略里只写 `cas:UploadUserCertificate` 不生效，会报 `NoPermission`——上面 JSON 两个前缀都包含，无需修改。
+>
+> 授权后仍报权限不足？可用 RAM 控制台 **权限管理** > **权限诊断**，粘贴报错响应中的 Request ID 或诊断密文，系统会解析出具体缺失的 Action。
+
+### 5. 权限自检方法
 
 无需真实写操作即可验证 AK 权限——用**无效参数**调用写 API：权限不足会报 `Forbidden`/`NoPermission`，权限正常则报业务错误（如"域名不存在"）：
 
@@ -121,7 +221,7 @@ aliyun slb UploadServerCertificate --RegionId cn-beijing
 
 ### AK 轮换
 
-1. RAM 控制台为对应用户创建新 AccessKey（保留旧的）
+1. RAM 控制台为对应用户创建新 AccessKey（入口见上文第 3 节步骤 2，保留旧的）
 2. 更新 `config.json` 中的 AK → 重启面板 → 点「立即检测」确认 116+ 条扫描正常
 3. 确认无误后禁用/删除旧 AK
 4. 若同 AK 还用于其他系统（如每日巡检脚本），同步更新各处配置后再删旧 AK
@@ -186,7 +286,7 @@ aliyun slb UploadServerCertificate --RegionId cn-beijing
 | 窗口白屏 / 闪退 | 多显卡或远控（ToDesk 等）环境导致 WebView2 GPU 崩溃，本仓库 `main.go` 已内置 `WebviewGpuIsDisabled` 修复；若自行改造请保留 |
 | 检测报权限错误 | AK 被改过权限，按上文重新自检 |
 | 申请报 "ACME 账号注册失败" | ZeroSSL 需填 EAB；或改用 Let's Encrypt（`acme_dir_url` 换成 LE 地址、EAB 留空） |
-| 部署报 NoPermission | 对照第 3 节权限表，重点检查 `yundun-cert:` 前缀 |
+| 部署报 NoPermission | 对照第 4 节权限表，重点检查 `yundun-cert:` 前缀；仍无法定位时用 RAM 控制台「权限诊断」 |
 | 改了 config.json 不生效 | 重启面板（启动时读取一次） |
 
 ### 目录结构
