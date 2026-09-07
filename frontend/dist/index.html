@@ -284,7 +284,7 @@
         通过 ACME + DNS-01 自动验证签发。通配符写 <code>*.example.com</code>，多个域名用逗号或换行分隔（第一项为主域名）。
         验证过程会自动在云解析添加 <code>_acme-challenge</code> TXT 记录，完成后自动清除。
       </div>
-      <textarea class="domains" id="applyDomains" spellcheck="false" placeholder="test-ssl.sunnykids.cc&#10;或 *.erp.iforge.cn, erp.iforge.cn"></textarea>
+      <textarea class="domains" id="applyDomains" spellcheck="false" placeholder="ssl.example.com&#10;或 *.example.cn, example.cn"></textarea>
       <div class="formrow" style="margin-top:12px">
         <button class="btn btn-blue" id="applyBtn" onclick="startApply()">开始申请</button>
         <span class="muted" id="applyHint"></span>
