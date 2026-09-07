@@ -1,0 +1,61 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- 底色：深蓝渐变（与面板主色 #1E4FBD 同系） -->
+    <linearGradient id="bg" x1="0.15" y1="0" x2="0.85" y2="1">
+      <stop offset="0" stop-color="#2F6AE8"/>
+      <stop offset="0.55" stop-color="#1E4FBD"/>
+      <stop offset="1" stop-color="#0B2668"/>
+    </linearGradient>
+    <!-- 盾牌：白→浅蓝，带轻微立体感 -->
+    <linearGradient id="sh" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#D9E5FA"/>
+    </linearGradient>
+    <!-- 挂锁锁体 -->
+    <linearGradient id="lk" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2B62E3"/>
+      <stop offset="1" stop-color="#16409F"/>
+    </linearGradient>
+    <!-- 徽章绿 -->
+    <linearGradient id="gd" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#22A457"/>
+      <stop offset="1" stop-color="#146F3B"/>
+    </linearGradient>
+  </defs>
+
+  <!-- 圆角方底 -->
+  <rect width="1024" height="1024" rx="216" fill="url(#bg)"/>
+  <!-- 顶部高光弧 -->
+  <path d="M0 0 H1024 V300 C700 420 324 420 0 300 Z" fill="#FFFFFF" opacity="0.07"/>
+
+  <!-- 安全盾 -->
+  <path d="M512 168
+           L772 262
+           V492
+           C772 656 676 776 512 846
+           C348 776 252 656 252 492
+           V262 Z"
+        fill="url(#sh)"/>
+  <!-- 盾内描边 -->
+  <path d="M512 216
+           L724 294
+           V492
+           C724 626 648 722 512 786
+           C376 722 300 626 300 492
+           V294 Z"
+        fill="none" stroke="#B9CCF0" stroke-width="10" opacity="0.8"/>
+
+  <!-- 挂锁：锁梁 -->
+  <path d="M448 468 v-56 a64 64 0 0 1 128 0 v56"
+        fill="none" stroke="#1E4FBD" stroke-width="48" stroke-linecap="round"/>
+  <!-- 挂锁：锁体 -->
+  <rect x="404" y="462" width="216" height="172" rx="34" fill="url(#lk)"/>
+  <!-- 锁孔 -->
+  <circle cx="512" cy="532" r="27" fill="#FFFFFF"/>
+  <rect x="499" y="540" width="26" height="56" rx="13" fill="#FFFFFF"/>
+
+  <!-- 右下角"已验证"徽章 -->
+  <circle cx="712" cy="722" r="118" fill="url(#gd)" stroke="#FFFFFF" stroke-width="22"/>
+  <path d="M654 724 L696 768 L776 680"
+        fill="none" stroke="#FFFFFF" stroke-width="44" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
