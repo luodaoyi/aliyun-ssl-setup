@@ -91,30 +91,38 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p build/bin out
-          EXTRA=()
+          # macOS system bash (3.2) + set -u treats empty "${arr[@]}" as unbound.
+          # Build argv without relying on an empty array expansion.
+          BUILD_ARGS=(build -s -platform "$PLATFORM" -o "$ARTIFACT")
+          if [[ "$KIND" != "macos" ]]; then
+            BUILD_ARGS+=(-nopackage)
+          fi
           if [[ -n "${WEBKIT_TAG:-}" ]]; then
-            EXTRA+=(-tags "$WEBKIT_TAG")
+            BUILD_ARGS+=(-tags "$WEBKIT_TAG")
           fi
           # macOS: keep packaging so we get .app; others: skip installer packaging
-          if [[ "$KIND" == "macos" ]]; then
-            wails build -s -platform "$PLATFORM" -o "$ARTIFACT" "${EXTRA[@]}"
-          else
-            wails build -s -nopackage -platform "$PLATFORM" -o "$ARTIFACT" "${EXTRA[@]}"
-          fi
+          wails "${BUILD_ARGS[@]}"
           ls -la build/bin
 
           if [[ "$KIND" == "macos" ]]; then
-            cd build/bin
-            if [[ -d sslpanel.app ]]; then
-              zip -qry "../../out/${ARTIFACT}.zip" sslpanel.app
-            elif [[ -d "${ARTIFACT}.app" ]]; then
-              zip -qry "../../out/${ARTIFACT}.zip" "${ARTIFACT}.app"
-            elif [[ -f "$ARTIFACT" ]]; then
-              zip -qry "../../out/${ARTIFACT}.zip" "$ARTIFACT"
-            elif [[ -f sslpanel ]]; then
-              zip -qry "../../out/${ARTIFACT}.zip" sslpanel
+            # Stay at repo root; zip from build/bin so final `ls out` still works under set -e.
+            # Wails may name the bundle sslpanel.app, sslpanel-app.app, or ${ARTIFACT}.app
+            app=""
+            for cand in sslpanel.app sslpanel-app.app "${ARTIFACT}.app"; do
+              if [[ -d "build/bin/$cand" ]]; then
+                app="$cand"
+                break
+              fi
+            done
+            if [[ -n "$app" ]]; then
+              (cd build/bin && zip -qry "../../out/${ARTIFACT}.zip" "$app")
+            elif [[ -f "build/bin/$ARTIFACT" ]]; then
+              (cd build/bin && zip -qry "../../out/${ARTIFACT}.zip" "$ARTIFACT")
+            elif [[ -f build/bin/sslpanel ]]; then
+              (cd build/bin && zip -qry "../../out/${ARTIFACT}.zip" sslpanel)
             else
               echo "No macOS product found" >&2
+              ls -la build/bin
               exit 1
             fi
           else
