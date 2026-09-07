@@ -13,7 +13,7 @@ import re
 SRC = "frontend/dist/index.html"
 OUT = "progress-preview.html"
 
-# 真实抓到的进度事件流（sslpanel-app 对阿里云只读 API 的一次完整扫描，11.4s / 116 条证书）
+# 进度事件流样例（脱敏后的示例数据，用于本地预览进度面板渲染）
 EVENTS = [
     (0.00, "init", "准备", "开始扫描 5 类云资源…", 0, 0, "info"),
     (0.00, "dns", "云解析域名", "正在查询云解析域名…", 0, 0, "info"),
@@ -33,24 +33,24 @@ EVENTS = [
     (0.38, "cas", "CAS 证书管家", "解析证书 11/11：cert-example03", 11, 11, "info"),
     (0.40, "cas", "CAS 证书管家", "完成，11 条", 11, 11, "ok"),
     (0.45, "cdn", "CDN 加速域名", "发现 14 个加速域名，开始 TLS 实测…", 0, 14, "info"),
-    (0.52, "oss", "OSS 自定义域名", "查询绑定域名 5/38：example-static", 5, 38, "info"),
+    (0.52, "oss", "OSS 自定义域名", "查询绑定域名 5/38：example-bucket-a", 5, 38, "info"),
     (0.60, "cdn", "CDN 加速域名", "TLS 实测 5/14：cdn.example.com", 5, 14, "info"),
     (0.72, "slb", "SLB 负载均衡", "cn-hangzhou 完成，0 张证书", 2, 2, "ok"),
     (0.74, "slb", "SLB 负载均衡", "完成，7 条", 7, 7, "ok"),
-    (0.80, "oss", "OSS 自定义域名", "查询绑定域名 10/38：example-erp", 10, 38, "info"),
+    (0.80, "oss", "OSS 自定义域名", "查询绑定域名 10/38：example-bucket-b", 10, 38, "info"),
     (0.90, "cdn", "CDN 加速域名", "TLS 实测 10/14：admin.example.com", 10, 14, "info"),
-    (0.98, "oss", "OSS 自定义域名", "查询绑定域名 15/38：example-cms", 15, 38, "info"),
-    (1.10, "oss", "OSS 自定义域名", "查询绑定域名 20/38：webplus-cn-beijing-…", 20, 38, "info"),
-    (1.22, "oss", "OSS 自定义域名", "查询绑定域名 25/38：example-docs", 25, 38, "info"),
+    (0.98, "oss", "OSS 自定义域名", "查询绑定域名 15/38：example-bucket-c", 15, 38, "info"),
+    (1.10, "oss", "OSS 自定义域名", "查询绑定域名 20/38：example-bucket-d", 20, 38, "info"),
+    (1.22, "oss", "OSS 自定义域名", "查询绑定域名 25/38：example-bucket-e", 25, 38, "info"),
     (1.34, "cdn", "CDN 加速域名", "TLS 实测 14/14：www.example.com", 14, 14, "info"),
     (1.40, "cdn", "CDN 加速域名", "完成，14 条", 14, 14, "ok"),
-    (1.46, "oss", "OSS 自定义域名", "查询绑定域名 30/38：example-factory-docs", 30, 38, "info"),
-    (1.58, "oss", "OSS 自定义域名", "查询绑定域名 35/38：example-open", 35, 38, "info"),
-    (1.70, "oss", "OSS 自定义域名", "查询绑定域名 38/38：example-factory-erp", 38, 38, "info"),
+    (1.46, "oss", "OSS 自定义域名", "查询绑定域名 30/38：example-bucket-f", 30, 38, "info"),
+    (1.58, "oss", "OSS 自定义域名", "查询绑定域名 35/38：example-bucket-g", 35, 38, "info"),
+    (1.70, "oss", "OSS 自定义域名", "查询绑定域名 38/38：example-bucket-h", 38, 38, "info"),
     (1.80, "oss", "OSS 自定义域名", "发现 76 个域名，开始 TLS 实测证书…", 0, 13, "info"),
     (2.10, "oss", "OSS 自定义域名", "TLS 实测 5/13：erp.example.cn", 5, 13, "info"),
     (2.60, "oss", "OSS 自定义域名", "TLS 实测 10/13：oss.example.cn", 10, 13, "info"),
-    (3.40, "oss", "OSS 自定义域名", "TLS 实测 13/13：example.com", 13, 13, "info"),
+    (3.40, "oss", "OSS 自定义域名", "TLS 实测 13/13：www.example.cn", 13, 13, "info"),
     (3.60, "oss", "OSS 自定义域名", "完成，76 个域名", 76, 76, "ok"),
     (3.70, "oss", "OSS 自定义域名", "完成，76 条", 76, 76, "ok"),
     (3.90, "done", "汇总", "扫描完成：116 条证书", 116, 116, "ok"),
@@ -82,7 +82,7 @@ window.go = { main: { App: {
 """
 
 DRIVER = """<script>
-/* ===== 回放真实进度事件流（数据来自一次真实扫描：11.4s / 116 条证书） ===== */
+/* ===== 回放进度事件流（脱敏样例数据，用于本地预览） ===== */
 const EVENTS = %s;
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
