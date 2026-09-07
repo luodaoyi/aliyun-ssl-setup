@@ -37,3 +37,4 @@ build/*.png
 # Go
 *.test
 *.out
+build/.edgeicon*/
