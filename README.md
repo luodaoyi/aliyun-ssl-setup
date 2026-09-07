@@ -54,6 +54,25 @@ bash build.sh
 
 产物：`build/bin/sslpanel.exe`（约 13 MB，免安装，无需浏览器）。
 
+### 发版（GitHub Actions）
+
+打 tag 后自动多平台构建并上传 Release 资产（含 `SHA256SUMS`）：
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+当前 Action 覆盖的 Wails 目标：
+
+| 平台 | 架构 | 资产名 |
+|------|------|--------|
+| Windows | amd64 / arm64 / 386 | `sslpanel-windows-*.exe` |
+| macOS | arm64（Apple Silicon）/ amd64（Intel） | `sslpanel-darwin-*.zip` |
+| Linux | amd64 / arm64 | `sslpanel-linux-*` |
+
+也可在 Actions 里手动 `workflow_dispatch` 做构建演练（不推 tag 则不发 Release）。
+
 ## AccessKey 配置
 
 ### 1. 配置文件位置
