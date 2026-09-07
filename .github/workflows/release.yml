@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   GO_VERSION: "1.25.x"
@@ -59,12 +59,6 @@ jobs:
             artifact: sslpanel-linux-arm64
             kind: linux
             webkit_tag: webkit2_41
-          - name: linux-arm
-            os: ubuntu-latest
-            platform: linux/arm
-            artifact: sslpanel-linux-arm
-            kind: linux
-            webkit_tag: webkit2_41
 
     steps:
       - name: Checkout
@@ -86,9 +80,6 @@ jobs:
           sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev || \
             sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev
 
-      - name: Install Linux ARM32 cross toolchain
-        if: matrix.platform == 'linux/arm'
-        run: sudo apt-get install -y gcc-arm-linux-gnueabihf
 
       - name: Build
         shell: bash
@@ -157,6 +148,8 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
     steps:
       - name: Download artifacts
         uses: actions/download-artifact@v4
@@ -177,6 +170,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
+          overwrite_files: false
           files: dist/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

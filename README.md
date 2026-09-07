@@ -69,7 +69,7 @@ git push origin v0.1.0
 |------|------|--------|
 | Windows | amd64 / arm64 / 386 | `sslpanel-windows-*.exe` |
 | macOS | arm64（Apple Silicon）/ amd64（Intel） | `sslpanel-darwin-*.zip` |
-| Linux | amd64 / arm64 / arm | `sslpanel-linux-*` |
+| Linux | amd64 / arm64 | `sslpanel-linux-*` |
 
 也可在 Actions 里手动 `workflow_dispatch` 做构建演练（不推 tag 则不发 Release）。
 
