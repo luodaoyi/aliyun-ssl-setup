@@ -1,7 +1,5 @@
-name: Release
-
-on:
-  push:
+patched ok, len 5473
+push:
     tags:
       - "v*"
   workflow_dispatch:
@@ -106,8 +104,11 @@ jobs:
 
           if [[ "$KIND" == "macos" ]]; then
             cd build/bin
+            # Wails may name the bundle sslpanel.app, sslpanel-app.app, or ${ARTIFACT}.app
             if [[ -d sslpanel.app ]]; then
               zip -qry "../../out/${ARTIFACT}.zip" sslpanel.app
+            elif [[ -d sslpanel-app.app ]]; then
+              zip -qry "../../out/${ARTIFACT}.zip" sslpanel-app.app
             elif [[ -d "${ARTIFACT}.app" ]]; then
               zip -qry "../../out/${ARTIFACT}.zip" "${ARTIFACT}.app"
             elif [[ -f "$ARTIFACT" ]]; then
@@ -116,6 +117,7 @@ jobs:
               zip -qry "../../out/${ARTIFACT}.zip" sslpanel
             else
               echo "No macOS product found" >&2
+              ls -la .
               exit 1
             fi
           else
