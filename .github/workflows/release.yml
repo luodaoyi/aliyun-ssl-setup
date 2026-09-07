@@ -1,0 +1,182 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  GO_VERSION: "1.25.x"
+  # Match go.mod require github.com/wailsapp/wails/v2 v2.15.0
+  WAILS_VERSION: "v2.15.0"
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-amd64
+            os: windows-latest
+            platform: windows/amd64
+            artifact: sslpanel-windows-amd64.exe
+            kind: bin
+          - name: windows-arm64
+            os: windows-latest
+            platform: windows/arm64
+            artifact: sslpanel-windows-arm64.exe
+            kind: bin
+          - name: windows-386
+            os: windows-latest
+            platform: windows/386
+            artifact: sslpanel-windows-386.exe
+            kind: bin
+          - name: darwin-arm64
+            os: macos-latest
+            platform: darwin/arm64
+            artifact: sslpanel-darwin-arm64
+            kind: macos
+          - name: darwin-amd64
+            os: macos-latest
+            platform: darwin/amd64
+            artifact: sslpanel-darwin-amd64
+            kind: macos
+          - name: linux-amd64
+            os: ubuntu-latest
+            platform: linux/amd64
+            artifact: sslpanel-linux-amd64
+            kind: linux
+            webkit_tag: webkit2_41
+          - name: linux-arm64
+            os: ubuntu-24.04-arm
+            platform: linux/arm64
+            artifact: sslpanel-linux-arm64
+            kind: linux
+            webkit_tag: webkit2_41
+          - name: linux-arm
+            os: ubuntu-latest
+            platform: linux/arm
+            artifact: sslpanel-linux-arm
+            kind: linux
+            webkit_tag: webkit2_41
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Install Wails CLI
+        shell: bash
+        run: go install "github.com/wailsapp/wails/v2/cmd/wails@${WAILS_VERSION}"
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev || \
+            sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev
+
+      - name: Install Linux ARM32 cross toolchain
+        if: matrix.platform == 'linux/arm'
+        run: sudo apt-get install -y gcc-arm-linux-gnueabihf
+
+      - name: Build
+        shell: bash
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          ARTIFACT: ${{ matrix.artifact }}
+          KIND: ${{ matrix.kind }}
+          WEBKIT_TAG: ${{ matrix.webkit_tag }}
+        run: |
+          set -euo pipefail
+          mkdir -p build/bin out
+          EXTRA=()
+          if [[ -n "${WEBKIT_TAG:-}" ]]; then
+            EXTRA+=(-tags "$WEBKIT_TAG")
+          fi
+          # macOS: keep packaging so we get .app; others: skip installer packaging
+          if [[ "$KIND" == "macos" ]]; then
+            wails build -s -platform "$PLATFORM" -o "$ARTIFACT" "${EXTRA[@]}"
+          else
+            wails build -s -nopackage -platform "$PLATFORM" -o "$ARTIFACT" "${EXTRA[@]}"
+          fi
+          ls -la build/bin
+
+          if [[ "$KIND" == "macos" ]]; then
+            cd build/bin
+            if [[ -d sslpanel.app ]]; then
+              zip -qry "../../out/${ARTIFACT}.zip" sslpanel.app
+            elif [[ -d "${ARTIFACT}.app" ]]; then
+              zip -qry "../../out/${ARTIFACT}.zip" "${ARTIFACT}.app"
+            elif [[ -f "$ARTIFACT" ]]; then
+              zip -qry "../../out/${ARTIFACT}.zip" "$ARTIFACT"
+            elif [[ -f sslpanel ]]; then
+              zip -qry "../../out/${ARTIFACT}.zip" sslpanel
+            else
+              echo "No macOS product found" >&2
+              exit 1
+            fi
+          else
+            # Locate the produced binary (Wails may keep the -o name or default sslpanel[.exe])
+            src=""
+            for cand in "build/bin/$ARTIFACT" "build/bin/sslpanel.exe" "build/bin/sslpanel"; do
+              if [[ -f "$cand" ]]; then
+                src="$cand"
+                break
+              fi
+            done
+            if [[ -z "$src" ]]; then
+              echo "No binary found for $PLATFORM" >&2
+              ls -la build/bin
+              exit 1
+            fi
+            cp -f "$src" "out/$ARTIFACT"
+          fi
+          ls -la out
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: out/*
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Flatten + SHA256SUMS
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          find artifacts -type f -exec cp -f {} dist/ \;
+          cd dist
+          ls -la
+          sha256sum * | tee SHA256SUMS
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: dist/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
