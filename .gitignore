@@ -38,3 +38,7 @@ build/*.png
 *.test
 *.out
 build/.edgeicon*/
+
+# README 截图生成的临时文件
+docs/screenshots/_preview.html
+docs/screenshots/_edge_*/
